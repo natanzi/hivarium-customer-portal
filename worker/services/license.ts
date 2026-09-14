@@ -12,27 +12,33 @@
  * does not. See docs/internal-service-contracts.md for the expected contract.
  */
 
-import type { LicenseState } from '../../shared/types';
+import type { LicenseState, LicenseRecord } from '../../shared/types';
 import { FetchOperatorService, type UpstreamResult } from './operator';
 
 export interface LicensePort {
   getLicenses(customerId: string): Promise<UpstreamResult<LicenseState>>;
+  getLicense(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseRecord>>;
+  downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<string>>;
 }
 
 export class FetchLicenseService implements LicensePort {
   private readonly fetcher: FetchOperatorService;
+  private readonly token?: string;
+  private readonly binding?: Fetcher;
+  private readonly urlOverride?: string;
 
-  constructor(private readonly deps: { binding?: Fetcher; urlOverride?: string }) {
+  constructor(private readonly deps: { binding?: Fetcher; urlOverride?: string; token?: string }) {
+    this.binding = deps.binding;
+    this.urlOverride = deps.urlOverride;
+    this.token = deps.token;
     this.fetcher = new FetchOperatorService({
       binding: deps.binding,
       urlOverride: deps.urlOverride,
+      token: deps.token,
     });
   }
 
   async getLicenses(customerId: string): Promise<UpstreamResult<LicenseState>> {
-    // The License Service currently exposes no license read endpoint.
-    // Expected contract documented in docs/internal-service-contracts.md:
-    // GET /api/v1/licenses?customerId=...  ->  { licenses: [...] }
     const result = await this.fetcher.fetchLicenseState(
       `/api/v1/licenses?customerId=${encodeURIComponent(customerId)}`,
     );
@@ -40,8 +46,41 @@ export class FetchLicenseService implements LicensePort {
     if (result.error.code === 'missing_binding') {
       return { ok: false, error: { code: 'missing_binding', detail: 'License service binding is not configured.' } };
     }
-    // A 404 upstream means the endpoint is not implemented yet: the portal
-    // must show the license section as unavailable rather than fabricate data.
     return { ok: false, error: { code: 'not_implemented', detail: 'License Service does not implement the license read endpoint yet.' } };
+  }
+
+  async getLicense(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseRecord>> {
+    // We fetch all licenses to reuse the FetchOperatorService validation for MVP
+    const result = await this.getLicenses(customerId);
+    if (!result.ok) return result;
+    const license = result.value.licenses.find(l => l.id === licenseId);
+    if (!license) return { ok: false, error: { code: 'not_implemented', detail: 'License not found' } };
+    return { ok: true, value: license };
+  }
+
+  async downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<string>> {
+    if (!this.binding && !this.urlOverride) {
+      return { ok: false, error: { code: 'missing_binding', detail: 'License service binding is not configured.' } };
+    }
+    const path = `/api/v1/licenses/${encodeURIComponent(licenseId)}/document?customerId=${encodeURIComponent(customerId)}`;
+    const requestUrl = this.binding
+      ? `https://license-service${path}`
+      : `${this.urlOverride}${path}`;
+    try {
+      const headers = new Headers();
+      if (this.token) {
+        headers.set('Authorization', `Bearer ${this.token}`);
+      }
+      const response = this.binding
+        ? await this.binding.fetch(requestUrl, { headers })
+        : await fetch(requestUrl, { headers });
+
+      if (!response.ok) {
+        return { ok: false, error: { code: 'not_implemented', detail: 'upstream error' } };
+      }
+      return { ok: true, value: await response.text() };
+    } catch {
+      return { ok: false, error: { code: 'unreachable', detail: 'upstream unreachable' } };
+    }
   }
 }

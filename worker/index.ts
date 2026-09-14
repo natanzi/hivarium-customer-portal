@@ -52,6 +52,13 @@ export interface PortalEnv {
   /** Local-only URL overrides for `wrangler dev` and E2E. Never set in production. */
   OPERATOR_SERVICE_URL?: string;
   LICENSE_SERVICE_URL?: string;
+
+  /** Outbound: service authentication tokens for upstream services. */
+  OPERATOR_SERVICE_TOKEN?: string;
+  LICENSE_SERVICE_TOKEN?: string;
+
+  /** Inbound: service token for Operator Console webhooks. */
+  OPERATOR_CALLER_TOKEN?: string;
 }
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -91,6 +98,7 @@ function buildOperatorPort(env: PortalEnv): FetchOperatorService {
   return new FetchOperatorService({
     binding: env.OPERATOR_SERVICE,
     urlOverride: env.OPERATOR_SERVICE_URL,
+    token: env.OPERATOR_SERVICE_TOKEN,
   });
 }
 
@@ -98,6 +106,7 @@ function buildLicensePort(env: PortalEnv): FetchLicenseService {
   return new FetchLicenseService({
     binding: env.LICENSE_SERVICE,
     urlOverride: env.LICENSE_SERVICE_URL,
+    token: env.LICENSE_SERVICE_TOKEN,
   });
 }
 

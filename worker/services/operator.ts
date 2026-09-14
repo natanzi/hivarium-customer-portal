@@ -22,7 +22,22 @@ import type {
   LedgerState,
   LicenseState,
   UsageSummary,
+  AgentAccessGrant,
 } from '../../shared/types';
+
+export interface PortalView {
+  organization: { customerId: string; name: string | null; status: string | null };
+  commercial: {
+    model: string;
+    effectiveDate: string;
+    endDate: string | null;
+    renewalDate: string | null;
+  } | null;
+  prepaid: { balanceTokens: number | null; warningThresholdTokens: number | null } | null;
+  features: string[];
+  access: { active: AgentAccessGrant[]; scheduled: AgentAccessGrant[] };
+  lastUpdated: string;
+}
 
 export type UpstreamErrorCode = 'missing_binding' | 'not_implemented' | 'unreachable';
 
@@ -41,6 +56,7 @@ export interface OperatorPort {
   getUsageSummary(customerId: string): Promise<UpstreamResult<UsageSummary>>;
   getAgentCatalog(): Promise<UpstreamResult<AgentProduct[]>>;
   getActivity(customerId: string): Promise<UpstreamResult<ActivityEventDto[]>>;
+  getPortalView(customerId: string): Promise<UpstreamResult<PortalView>>;
 }
 
 export interface FetchServiceDeps {
@@ -48,6 +64,7 @@ export interface FetchServiceDeps {
   binding?: Fetcher;
   /** Local URL override for `wrangler dev` / E2E. Never set in production. */
   urlOverride?: string;
+  token?: string;
   /** Optional JSON response validator; returns the typed value or an error. */
   validate?: (value: unknown) => { ok: true; value: unknown } | { ok: false; detail: string };
 }
@@ -64,9 +81,26 @@ async function fetchServiceJson(deps: FetchServiceDeps, path: string): Promise<u
     const requestUrl = deps.binding
       ? `https://operator-service${path}`
       : `${deps.urlOverride}${path}`;
+
+    // Add timeouts
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 10000);
+
+    const headers = new Headers();
+    if (deps.token) {
+      headers.set('Authorization', `Bearer ${deps.token}`);
+    }
+
+    const init = {
+      headers,
+      signal: controller.signal,
+    };
+
     const response = deps.binding
-      ? await deps.binding.fetch(requestUrl)
-      : await fetch(requestUrl);
+      ? await deps.binding.fetch(requestUrl, init)
+      : await fetch(requestUrl, init);
+
+    clearTimeout(id);
     if (response.status === 404) {
       throw upstream('not_implemented', `Upstream endpoint ${path} is not implemented.`);
     }
@@ -114,7 +148,7 @@ function asArray(value: unknown): unknown[] | null {
  * whole section, but a wholly unexpected body shape is rejected.
  */
 export class FetchOperatorService implements OperatorPort {
-  constructor(private readonly deps: FetchServiceDeps) {}
+  constructor(private readonly deps: FetchServiceDeps) { }
 
   async getCustomerProfile(customerId: string): Promise<UpstreamResult<CustomerProfile>> {
     try {
@@ -212,7 +246,20 @@ export class FetchOperatorService implements OperatorPort {
       return { ok: false, error: toUpstreamError(error) };
     }
   }
+
+  async getPortalView(customerId: string): Promise<UpstreamResult<PortalView>> {
+    try {
+      const body = await fetchServiceJson(
+        { ...this.deps, validate: validatePortalView },
+        `/service/v1/customers/${encodeURIComponent(customerId)}/portal-view`
+      );
+      return { ok: true, value: body as PortalView };
+    } catch (error) {
+      return { ok: false, error: toUpstreamError(error) };
+    }
+  }
 }
+
 
 function toUpstreamError(error: unknown): UpstreamError {
   if (error && typeof error === 'object' && 'code' in error && 'detail' in error) {
@@ -424,6 +471,72 @@ function validateLicenseState(value: unknown): { ok: true; value: unknown } | { 
     value: {
       customerId: asString(record?.customerId) ?? '',
       licenses: licenses.filter(Boolean),
+    },
+  };
+}
+
+function validatePortalView(value: unknown): { ok: true; value: unknown } | { ok: false; detail: string } {
+  const record = asRecord(value);
+  if (!record) return { ok: false, detail: 'not an object' };
+
+  const org = asRecord(record.organization);
+  if (!org) return { ok: false, detail: 'missing organization' };
+
+  const active = asArray(asRecord(record.access)?.active) ?? [];
+  const scheduled = asArray(asRecord(record.access)?.scheduled) ?? [];
+
+  return {
+    ok: true,
+    value: {
+      organization: {
+        customerId: asString(org.customerId) ?? asString(record.customerId) ?? '',
+        name: asString(org.name) ?? null,
+        status: asString(org.status) ?? null,
+      },
+      commercial: asRecord(record.commercial) ? {
+        model: asString(asRecord(record.commercial)?.model) ?? 'negotiated_agreement',
+        effectiveDate: asString(asRecord(record.commercial)?.effectiveDate) ?? '',
+        endDate: asString(asRecord(record.commercial)?.endDate) ?? null,
+        renewalDate: asString(asRecord(record.commercial)?.renewalDate) ?? null,
+      } : null,
+      prepaid: asRecord(record.prepaid) ? {
+        balanceTokens: asNumber(asRecord(record.prepaid)?.balanceTokens) ?? null,
+        warningThresholdTokens: asNumber(asRecord(record.prepaid)?.warningThresholdTokens) ?? null,
+      } : null,
+      features: (asArray(record.features) ?? []).map(asString).filter(Boolean) as string[],
+      access: {
+        active: active.map((a) => {
+          const g = asRecord(a);
+          return g ? {
+            grantId: asString(g.grantId) ?? '',
+            agentProductId: asString(g.agentProductId) ?? '',
+            agentName: asString(g.agentName) ?? '',
+            category: asString(g.category) ?? null,
+            version: asString(g.version) ?? null,
+            status: asString(g.status) as any ?? 'active',
+            startsAt: asString(g.startsAt) ?? '',
+            endsAt: asString(g.endsAt) ?? null,
+            licenseId: asString(g.licenseId) ?? null,
+            deploymentId: asString(g.deploymentId) ?? null,
+          } : null;
+        }).filter(Boolean),
+        scheduled: scheduled.map((a) => {
+          const g = asRecord(a);
+          return g ? {
+            grantId: asString(g.grantId) ?? '',
+            agentProductId: asString(g.agentProductId) ?? '',
+            agentName: asString(g.agentName) ?? '',
+            category: asString(g.category) ?? null,
+            version: asString(g.version) ?? null,
+            status: asString(g.status) as any ?? 'active',
+            startsAt: asString(g.startsAt) ?? '',
+            endsAt: asString(g.endsAt) ?? null,
+            licenseId: asString(g.licenseId) ?? null,
+            deploymentId: asString(g.deploymentId) ?? null,
+          } : null;
+        }).filter(Boolean),
+      },
+      lastUpdated: asString(record.lastUpdated) ?? new Date().toISOString(),
     },
   };
 }

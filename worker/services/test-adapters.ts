@@ -16,9 +16,10 @@ import type {
   CustomerProfile,
   LedgerState,
   LicenseState,
+  LicenseRecord,
   UsageSummary,
 } from '../../shared/types';
-import type { OperatorPort, UpstreamResult } from './operator';
+import type { OperatorPort, UpstreamResult, PortalView } from './operator';
 import type { LicensePort } from './license';
 
 export const FIXTURE_CUSTOMER_ID = 'acme-dev-001';
@@ -32,7 +33,7 @@ export class MemoryOperatorService implements OperatorPort {
       failWith?: 'missing' | 'unreachable' | 'not_implemented';
       failEndpoints?: string[];
     } = {},
-  ) {}
+  ) { }
 
   private fail(endpoint: string): UpstreamResult<never> {
     if (this.opts.failEndpoints?.includes(endpoint)) {
@@ -251,7 +252,7 @@ export class MemoryOperatorService implements OperatorPort {
     };
   }
 
-async getUsageSummary(): Promise<UpstreamResult<UsageSummary>> {
+  async getUsageSummary(): Promise<UpstreamResult<UsageSummary>> {
     const failed = this.maybeFail('usage-summary');
     if (failed) return failed;
     return {
@@ -291,12 +292,36 @@ async getUsageSummary(): Promise<UpstreamResult<UsageSummary>> {
       ],
     };
   }
+
+  async getPortalView(): Promise<UpstreamResult<PortalView>> {
+    const failed = this.maybeFail('portal-view');
+    if (failed) return failed;
+    return {
+      ok: true,
+      value: {
+        organization: { customerId: this.opts.customerId ?? FIXTURE_CUSTOMER_ID, name: 'Acme Instruments (Dev Fixture)', status: 'active' },
+        commercial: {
+          model: 'prepaid_tokens',
+          effectiveDate: '2026-01-01T00:00:00.000Z',
+          endDate: '2026-12-31T23:59:59.000Z',
+          renewalDate: '2026-12-01T00:00:00.000Z',
+        },
+        prepaid: { balanceTokens: 4250, warningThresholdTokens: 1000 },
+        features: ['sso', 'api_access'],
+        access: {
+          active: [],
+          scheduled: [],
+        },
+        lastUpdated: NOW,
+      },
+    };
+  }
 }
 
 export class MemoryLicenseService implements LicensePort {
   constructor(
     private readonly opts: { customerId?: string; failWith?: 'missing' | 'unreachable' | 'not_implemented' } = {},
-  ) {}
+  ) { }
 
   async getLicenses(): Promise<UpstreamResult<LicenseState>> {
     if (this.opts.failWith === 'missing') {
@@ -354,5 +379,26 @@ export class MemoryLicenseService implements LicensePort {
         ],
       },
     };
+  }
+
+  async getLicense(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseRecord>> {
+    const licenses = await this.getLicenses();
+    if (!licenses.ok) return licenses;
+    const l = licenses.value.licenses.find(x => x.id === licenseId);
+    if (!l) return { ok: false, error: { code: 'not_implemented', detail: 'not found' } };
+    return { ok: true, value: l };
+  }
+
+  async downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<string>> {
+    if (this.opts.failWith === 'missing') {
+      return { ok: false, error: { code: 'missing_binding', detail: 'missing binding' } };
+    }
+    if (this.opts.failWith === 'unreachable') {
+      return { ok: false, error: { code: 'unreachable', detail: 'unreachable' } };
+    }
+    if (this.opts.failWith === 'not_implemented') {
+      return { ok: false, error: { code: 'not_implemented', detail: 'not implemented upstream' } };
+    }
+    return { ok: true, value: `{"signed":true,"licenseId":"${licenseId}"}` };
   }
 }

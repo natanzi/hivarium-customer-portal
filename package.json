@@ -32,9 +32,10 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",
-    "jsdom": "^30.0.1",
+    "jsdom": "^23.2.0",
     "miniflare": "^5.20260911.0-alpha",
     "typescript": "^5.8.3",
+    "undici": "^6.19.2",
     "vite": "^6.3.5",
     "vitest": "^5.0.0",
     "wrangler": "4.131.1"
