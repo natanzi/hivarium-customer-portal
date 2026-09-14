@@ -111,17 +111,43 @@ customers.
 
 ## Request types
 
-The portal keeps its existing request types. Operator Console names map as:
+The portal keeps internal D1 enum names. Operator Console service DTOs use
+canonical external names. Translation is explicit at `/service/v1` and never
+rewrites historical rows.
 
-| Operator Console name | Portal `requestType` |
+| Internal D1 `request_type` | External DTO `requestType` |
 | --- | --- |
-| `license_renewal` | `renewal` |
-| `plan_change` | `capacity_increase` |
-| `additional_agent_access` | `agent_access` |
-| `token_credit` | `prepaid_credit` |
-| `support` | `general_support` (also `license_support`, `deployment_support`) |
+| `renewal` | `license_renewal` |
+| `capacity_increase` | `plan_change` |
+| `agent_access` | `additional_agent_access` |
+| `prepaid_credit` | `token_credit` |
+| `license_support` | `support` |
+| `deployment_support` | `support` |
+| `general_support` | `support` |
+
+Unknown internal values produce a controlled integration error. They are not
+cast or silently mapped.
+
+List filter `requestType=support` matches all three internal support types.
 
 This API does not accept payments or checkout.
+
+## Status names
+
+| Internal D1 `status` | External DTO `status` |
+| --- | --- |
+| `submitted` | `submitted` |
+| `in_review` | `under_review` |
+| `needs_information` | `needs_information` |
+| `approved` | `approved` |
+| `rejected` | `rejected` |
+| `completed` | `completed` |
+| `cancelled` | `cancelled` |
+
+`GET /service/v1/requests` and `GET /service/v1/requests/:id` return external
+names. `POST .../decision` accepts external decision names (`under_review`
+stores `in_review`). Query filters accept external names only (`in_review` and
+`renewal` are `400 invalid_request`).
 
 ## Lifecycle
 

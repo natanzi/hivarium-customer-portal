@@ -7,10 +7,9 @@
  * a text label.
  */
 
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { ApiError } from '../api/client';
-import type { RequestStatus } from '../../shared/types';
 
 // ---------------------------------------------------------------------------
 // Layout primitives
@@ -97,7 +96,8 @@ export function DefList({ items }: { items: Array<{ term: string; detail: ReactN
 
 const STATUS_LABELS: Record<string, string> = {
   submitted: 'Submitted',
-  in_review: 'In review',
+  in_review: 'Under review',
+  needs_information: 'Needs information',
   approved: 'Approved',
   rejected: 'Rejected',
   completed: 'Completed',
@@ -106,6 +106,7 @@ const STATUS_LABELS: Record<string, string> = {
   scheduled: 'Scheduled',
   expired: 'Expired',
   revoked: 'Revoked',
+  suspended: 'Suspended',
   disabled: 'Disabled',
   archived: 'Archived',
   pending: 'Pending',
@@ -179,14 +180,65 @@ export function OutboundLink({ href, children }: { href: string; children: React
   );
 }
 
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  cancelLabel = 'Keep request',
+  onConfirm,
+  onCancel,
+  busy = false,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  busy?: boolean;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    cancelRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      previous?.focus();
+    };
+  }, [busy, onCancel]);
+
+  return (
+    <div className="dialog-layer">
+      <button type="button" className="drawer-backdrop" aria-label="Dismiss dialog" onClick={busy ? undefined : onCancel} />
+      <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+        <h2 id="confirm-dialog-title">{title}</h2>
+        <p>{message}</p>
+        <div className="form-actions">
+          <Button variant="danger" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Working…' : confirmLabel}
+          </Button>
+          <button ref={cancelRef} type="button" className="btn btn-secondary" onClick={onCancel} disabled={busy}>
+            {cancelLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // State surfaces
 // ---------------------------------------------------------------------------
 
 export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   return (
-    <div className="state-surface" role="status" aria-busy="true" aria-live="polite" aria-label={label}>
-      <span className="spinner" aria-hidden="true" />
+    <div className="state-surface skeleton-state" role="status" aria-busy="true" aria-live="polite" aria-label={label}>
+      <div className="skeleton-block" aria-hidden="true" />
+      <div className="skeleton-block skeleton-block-short" aria-hidden="true" />
       <p>{label}</p>
     </div>
   );

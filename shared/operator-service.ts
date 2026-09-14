@@ -3,7 +3,22 @@
  * These types are not used by the customer SPA.
  */
 
-import type { RequestStatus, RequestType } from './types';
+/** Canonical Operator Console DTO names — not D1 storage names. */
+export type ExternalRequestType =
+  | 'license_renewal'
+  | 'plan_change'
+  | 'additional_agent_access'
+  | 'token_credit'
+  | 'support';
+
+export type ExternalRequestStatus =
+  | 'submitted'
+  | 'under_review'
+  | 'needs_information'
+  | 'approved'
+  | 'rejected'
+  | 'completed'
+  | 'cancelled';
 
 export const OPERATOR_SERVICE_API_VERSION = '1';
 
@@ -15,8 +30,8 @@ export interface OperatorSubmittedBy {
 export interface OperatorRequestSummary {
   requestId: string;
   customerId: string;
-  requestType: RequestType;
-  status: RequestStatus;
+  requestType: ExternalRequestType;
+  status: ExternalRequestStatus;
   summary: string;
   submittedBy: OperatorSubmittedBy;
   createdAt: string;
@@ -26,8 +41,8 @@ export interface OperatorRequestSummary {
 export interface OperatorRequestEvent {
   eventId: string;
   requestId: string;
-  previousStatus: RequestStatus | null;
-  resultingStatus: RequestStatus | null;
+  previousStatus: ExternalRequestStatus | null;
+  resultingStatus: ExternalRequestStatus | null;
   eventType: string;
   occurredAt: string;
   principalType: string;

@@ -15,16 +15,18 @@ import {
 
 function grantFields(grant: AgentAccessGrant): Array<{ term: string; detail: string }> {
   const fields: Array<{ term: string; detail: string }> = [
-    { term: 'Access', detail: grant.status },
-    { term: 'Starts', detail: formatDate(grant.startsAt) },
-    { term: 'Ends', detail: formatDate(grant.endsAt) },
+    { term: 'Product identifier', detail: grant.agentProductId },
+    { term: 'Access state', detail: grant.status },
+    { term: 'Active from', detail: formatDate(grant.startsAt) },
   ];
-  if (grant.licenseId) fields.push({ term: 'License', detail: grant.licenseId });
+  if (grant.endsAt) fields.push({ term: 'Scheduled end', detail: formatDate(grant.endsAt) });
+  if (grant.licenseId) fields.push({ term: 'Linked license', detail: grant.licenseId });
   if (grant.deploymentId) fields.push({ term: 'Deployment', detail: grant.deploymentId });
+  if (grant.version) fields.push({ term: 'Version', detail: grant.version });
   return fields;
 }
 
-function AgentCard({ grant }: { grant: AgentAccessGrant }) {
+function AgentCard({ grant, changeHref }: { grant: AgentAccessGrant; changeHref: string }) {
   return (
     <Card
       title={grant.agentName}
@@ -33,10 +35,14 @@ function AgentCard({ grant }: { grant: AgentAccessGrant }) {
       <DefList
         items={[
           ...(grant.category ? [{ term: 'Category', detail: grant.category }] : []),
-          ...(grant.version ? [{ term: 'Version', detail: grant.version }] : []),
           ...grantFields(grant),
         ]}
       />
+      <div className="action-row">
+        <LinkButton to={changeHref} variant="secondary">
+          Request access change
+        </LinkButton>
+      </div>
     </Card>
   );
 }
@@ -54,7 +60,6 @@ export default function Agents() {
   }
 
   const { access, catalog } = state.data;
-  const catalogNames = new Map(catalog.map((p) => [p.id, p.name]));
   const accessibleIds = new Set([...access.current, ...access.scheduled].map((g) => g.agentProductId));
   const availableButNotGranted = catalog.filter((p) => !accessibleIds.has(p.id));
 
@@ -62,10 +67,10 @@ export default function Agents() {
     <Page
       eyebrow="Agent access"
       title="Agents"
-      description="The Hivarium agents your organization is permitted to use. Access is granted by Hivarium operators — this portal only shows what is authorized."
+      description="Agents authorized for your organization. Access changes are submitted as requests; this portal never grants or revokes access itself."
       actions={
-        <LinkButton to="/requests/new?type=agent_access" >
-          Request agent access
+        <LinkButton to="/requests/new?type=agent_access">
+          Request additional agent access
         </LinkButton>
       }
     >
@@ -73,7 +78,11 @@ export default function Agents() {
         {access.current.length > 0 ? (
           <div className="card-grid">
             {access.current.map((grant) => (
-              <AgentCard key={grant.grantId} grant={grant} />
+              <AgentCard
+                key={grant.grantId}
+                grant={grant}
+                changeHref={`/requests/new?type=agent_access&agent=${encodeURIComponent(grant.agentProductId)}`}
+              />
             ))}
           </div>
         ) : (
@@ -85,21 +94,18 @@ export default function Agents() {
         <Card title="Scheduled access">
           <div className="card-grid">
             {access.scheduled.map((grant) => (
-              <AgentCard key={grant.grantId} grant={grant} />
+              <AgentCard
+                key={grant.grantId}
+                grant={grant}
+                changeHref={`/requests/new?type=agent_access&agent=${encodeURIComponent(grant.agentProductId)}`}
+              />
             ))}
           </div>
         </Card>
       ) : null}
 
       {availableButNotGranted.length > 0 ? (
-        <Card
-          title="Available on request"
-          actions={
-            <LinkButton to="/requests/new?type=agent_access" variant="secondary">
-              Request access
-            </LinkButton>
-          }
-        >
+        <Card title="Available on request">
           <ul className="plain-list">
             {availableButNotGranted.map((product) => (
               <li key={product.id} className="plain-row">
@@ -111,17 +117,15 @@ export default function Agents() {
                     {product.category ? `${product.category} — ` : ''}
                     {product.description ?? 'No description available.'}
                   </p>
+                  <p className="mono-id">{product.id}</p>
                 </div>
+                <LinkButton to={`/requests/new?type=agent_access&agent=${encodeURIComponent(product.id)}`} variant="secondary">
+                  Request additional agent access
+                </LinkButton>
               </li>
             ))}
           </ul>
         </Card>
-      ) : null}
-
-      {catalog.length === 0 ? (
-        <p className="hint-text text-faint" aria-label="Catalog note">
-          {catalogNames.size === 0 ? 'Agent catalog information is currently unavailable.' : ''}
-        </p>
       ) : null}
     </Page>
   );

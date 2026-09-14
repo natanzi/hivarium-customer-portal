@@ -27,6 +27,8 @@ import {
   handleCancelRequest,
   handleCreateRequest,
   handleLicenses,
+  handleLicenseDetail,
+  handleDownloadLicense,
   handleListRequests,
   handleOverview,
   handleRequestDetail,
@@ -282,6 +284,24 @@ async function handleApi(request: Request, env: PortalEnv, url: URL, extensions:
     }
     if (method === 'GET' && segments[2] === 'agents') {
       const body = await handleAgents(ctx);
+      return json(body, 200, { 'x-request-id': requestId });
+    }
+    if (method === 'GET' && segments[2] === 'licenses' && segments.length === 5 && segments[4] === 'document') {
+      const document = await handleDownloadLicense(ctx, segments[3]);
+      const headers: Record<string, string> = {
+        'x-request-id': requestId,
+        'cache-control': 'no-store',
+        'content-type': document.contentType ?? 'application/octet-stream',
+      };
+      if (document.contentDisposition) {
+        headers['content-disposition'] = document.contentDisposition;
+      } else {
+        headers['content-disposition'] = `attachment; filename="license-${segments[3]}.json"`;
+      }
+      return new Response(document.body, { status: 200, headers });
+    }
+    if (method === 'GET' && segments[2] === 'licenses' && segments.length === 4) {
+      const body = await handleLicenseDetail(ctx, segments[3]);
       return json(body, 200, { 'x-request-id': requestId });
     }
     if (method === 'GET' && segments[2] === 'licenses') {

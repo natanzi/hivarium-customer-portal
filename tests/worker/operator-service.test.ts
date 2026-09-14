@@ -145,10 +145,18 @@ describe('operator request list and detail', () => {
     );
     expect((byStatus.items as Array<{ status: string }>).every((item) => item.status === 'submitted')).toBe(true);
 
-    const byType = await jsonBody(
-      await serviceRequest(app.app, app.env, OPERATOR_TOKEN, '/service/v1/requests?requestType=renewal'),
+        const byType = await jsonBody(
+      await serviceRequest(app.app, app.env, OPERATOR_TOKEN, '/service/v1/requests?requestType=license_renewal'),
     );
-    expect((byType.items as Array<{ requestType: string }>).every((item) => item.requestType === 'renewal')).toBe(true);
+    expect((byType.items as Array<{ requestType: string }>).every((item) => item.requestType === 'license_renewal')).toBe(true);
+
+    const byReview = await jsonBody(
+      await serviceRequest(app.app, app.env, OPERATOR_TOKEN, '/service/v1/requests?status=under_review'),
+    );
+    expect((byReview.items as Array<{ status: string }>).every((item) => item.status === 'under_review')).toBe(true);
+
+    expect((await serviceRequest(app.app, app.env, OPERATOR_TOKEN, '/service/v1/requests?requestType=renewal')).status).toBe(400);
+    expect((await serviceRequest(app.app, app.env, OPERATOR_TOKEN, '/service/v1/requests?status=in_review')).status).toBe(400);
   });
 
   it('rejects invalid query values and enforces limit bounds', async () => {
@@ -176,10 +184,12 @@ describe('operator request list and detail', () => {
     const response = await serviceRequest(app.app, app.env, OPERATOR_TOKEN, '/service/v1/requests/req-acme-submitted-001');
     expect(response.status).toBe(200);
     const body = await jsonBody(response);
-    const request = body.request as { requestId: string; payload: unknown; events: unknown[] };
+    const request = body.request as { requestId: string; payload: unknown; events: unknown[]; requestType: string; status: string };
     expect(request.requestId).toBe('req-acme-submitted-001');
     expect(request.payload).toBeTruthy();
     expect(request.events.length).toBeGreaterThan(0);
+    expect(request.requestType).toBe('plan_change');
+    expect(request.status).toBe('submitted');
   });
 
   it('returns 404 for an unknown request', async () => {
@@ -383,10 +393,10 @@ describe('operator repository behavior', () => {
     const filtered = await listRequestsForOperator(app.harness.db, {
       customerId: 'acme-dev-001',
       status: 'cancelled',
-      requestType: 'agent_access',
+      requestTypes: ['agent_access'],
       limit: 10,
     });
-    expect(filtered.items.every((item) => item.requestId === 'req-acme-cancelled-001' || item.status === 'cancelled')).toBe(true);
+    expect(filtered.items.every((item) => item.status === 'cancelled' && item.requestType === 'additional_agent_access')).toBe(true);
   });
 
   it('appends events atomically and preserves history', async () => {

@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from 'react';
-import { useParams } from 'react-router';
+import { useLocation, useParams } from 'react-router';
 import { useSession } from '../session';
 import { useApi } from '../lib/useApi';
 import { apiFetch, apiFetchJson, ApiError, newIdempotencyKey } from '../api/client';
-import type { CustomerRequestDto, RequestType } from '../../shared/types';
+import type { CustomerRequestDto, RequestEventDto, RequestType } from '../../shared/types';
 import { REQUEST_TYPE_LABELS } from '../../shared/types';
 import {
   Button,
   Card,
+  ConfirmDialog,
   DefList,
   ErrorState,
   LinkButton,
@@ -17,25 +18,58 @@ import {
   formatDateTime,
 } from '../components/ui';
 
+const HIDDEN_METADATA_KEYS = new Set([
+  'operatorNote',
+  'principalType',
+  'principalIdentifier',
+  'idempotencyKeyHash',
+  'externalReference',
+  'serviceName',
+]);
+
 function payloadItems(request: CustomerRequestDto): Array<{ term: string; detail: string }> {
-  const payload = request.payload;
   const items: Array<{ term: string; detail: string }> = [];
-  for (const [key, value] of Object.entries(payload)) {
+  for (const [key, value] of Object.entries(request.payload)) {
     if (value === '' || value === null || value === undefined) continue;
     items.push({ term: key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()), detail: String(value) });
   }
   return items;
 }
 
-const CANCEL_CONFIRM = 'Cancel this request? It cannot be undone.';
+function visibleEvents(events: RequestEventDto[] | undefined): RequestEventDto[] {
+  return (events ?? []).filter((event) => {
+    if (event.eventType === 'operator_note') return false;
+    const message = event.message.toLowerCase();
+    if (message.includes('bear') && message.includes('token')) return false;
+    return true;
+  });
+}
+
+function eventHeading(event: RequestEventDto): string {
+  if (event.eventType === 'created') return 'Submitted';
+  if (event.eventType === 'comment') return 'Customer comment';
+  if (event.eventType === 'cancelled') return 'Cancelled';
+  if (event.eventType === 'completed') return 'Completed';
+  const status = typeof event.metadata.resultingStatus === 'string' ? event.metadata.resultingStatus : '';
+  if (status === 'in_review') return 'Under review';
+  if (status === 'needs_information') return 'Needs information';
+  if (status === 'approved') return 'Approved';
+  if (status === 'rejected') return 'Rejected';
+  if (status === 'completed') return 'Completed';
+  if (status === 'cancelled') return 'Cancelled';
+  return event.message;
+}
 
 export default function RequestDetail() {
   const { requestId = '' } = useParams();
+  const location = useLocation();
+  const justCreated = Boolean((location.state as { justCreated?: boolean } | null)?.justCreated);
   const sessionState = useSession();
   const [comment, setComment] = useState('');
   const [commentError, setCommentError] = useState<string | null>(null);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const state = useApi<CustomerRequestDto>(() => apiFetch(`/api/v1/requests/${encodeURIComponent(requestId)}`), [requestId]);
@@ -59,11 +93,11 @@ export default function RequestDetail() {
 
   const cancel = async () => {
     if (!request) return;
-    if (!window.confirm(CANCEL_CONFIRM)) return;
     setCancelling(true);
     setActionError(null);
     try {
       await apiFetchJson<{ request: CustomerRequestDto }>(`/api/v1/requests/${request.id}/cancel`, {});
+      setConfirmOpen(false);
       state.retry();
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : 'Cancellation failed. Please try again.');
@@ -96,6 +130,8 @@ export default function RequestDetail() {
     }
   };
 
+  const timeline = visibleEvents(request.events);
+
   return (
     <Page
       eyebrow={REQUEST_TYPE_LABELS[request.requestType as RequestType] ?? 'Request'}
@@ -103,9 +139,16 @@ export default function RequestDetail() {
       description={request.reason || undefined}
       actions={<StatusPill status={request.status} />}
     >
+      {justCreated ? (
+        <p className="success-banner" role="status">
+          Request submitted. Reference ID: <span className="mono-id">{request.id}</span>
+        </p>
+      ) : null}
+
       <Card title="Details">
         <DefList
           items={[
+            { term: 'Request ID', detail: <span className="mono-id">{request.id}</span> },
             { term: 'Type', detail: REQUEST_TYPE_LABELS[request.requestType as RequestType] ?? request.requestType },
             { term: 'Status', detail: <StatusPill status={request.status} /> },
             { term: 'Submitted by', detail: `${request.requestedBy.displayName} (${request.requestedBy.email})` },
@@ -120,7 +163,7 @@ export default function RequestDetail() {
       {request.status === 'submitted' && canCancel ? (
         <Card title="Actions">
           <p className="hint-text">
-            You can cancel this request while it is still in "submitted" state. Cancellation cannot be undone.
+            You can cancel this request while it is still submitted. Cancellation cannot be undone.
           </p>
           {actionError ? (
             <p className="field-error" role="alert">
@@ -128,15 +171,15 @@ export default function RequestDetail() {
             </p>
           ) : null}
           <div className="action-row">
-            <Button variant="danger" onClick={cancel} disabled={cancelling}>
-              {cancelling ? 'Cancelling…' : 'Cancel request'}
+            <Button variant="danger" onClick={() => setConfirmOpen(true)} disabled={cancelling}>
+              Cancel request
             </Button>
           </div>
         </Card>
       ) : null}
 
       <Card
-        title="History"
+        title="Timeline"
         actions={
           <LinkButton to="/requests/new" variant="ghost">
             New request
@@ -144,18 +187,24 @@ export default function RequestDetail() {
         }
       >
         <ol className="timeline" aria-label="Request history">
-          {(request.events ?? []).map((event) => (
-            <li key={event.id} className="timeline-item">
-              <span className="timeline-marker" aria-hidden="true" />
-              <div className="timeline-body">
-                <p className="timeline-heading">
-                  {event.actorLabel} · {event.message}
-                </p>
-                <p className="timeline-meta">{formatDateTime(event.createdAt)}</p>
-                {event.eventType === 'comment' ? <p className="timeline-text">{event.message}</p> : null}
-              </div>
-            </li>
-          ))}
+          {timeline.map((event) => {
+            const metadata = Object.fromEntries(
+              Object.entries(event.metadata).filter(([key]) => !HIDDEN_METADATA_KEYS.has(key)),
+            );
+            return (
+              <li key={event.id} className="timeline-item">
+                <span className="timeline-marker" aria-hidden="true" />
+                <div className="timeline-body">
+                  <p className="timeline-heading">
+                    {event.actorLabel} · {eventHeading(event)}
+                  </p>
+                  <p className="timeline-meta">{formatDateTime(event.createdAt)}</p>
+                  <p className="timeline-text">{event.message}</p>
+                  {Object.keys(metadata).length > 0 && event.eventType === 'comment' ? null : null}
+                </div>
+              </li>
+            );
+          })}
         </ol>
       </Card>
 
@@ -188,6 +237,17 @@ export default function RequestDetail() {
 
       {!canCancel && request.status === 'submitted' && !isRequester && session ? (
         <p className="hint-text">Only the requester or a customer admin can cancel this request.</p>
+      ) : null}
+
+      {confirmOpen ? (
+        <ConfirmDialog
+          title="Cancel this request?"
+          message="Cancellation cannot be undone. The request will remain in the history as cancelled."
+          confirmLabel="Cancel request"
+          onConfirm={() => void cancel()}
+          onCancel={() => setConfirmOpen(false)}
+          busy={cancelling}
+        />
       ) : null}
     </Page>
   );

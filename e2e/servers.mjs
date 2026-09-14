@@ -151,6 +151,8 @@ const licenses = {
     {
       id: 'lic-scan-2026',
       licenseType: 'subscription',
+      product: 'Threat Surface Scanner suite',
+      revision: '3',
       status: 'active',
       issuedAt: '2026-01-01T00:00:00.000Z',
       expiresAt: '2026-12-31T23:59:59.000Z',
@@ -209,14 +211,46 @@ function json(response, payload, status = 200) {
   response.end(body);
 }
 
+const portalView = {
+  organization: { customerId: CUSTOMER_ID, name: customerProfile.name, status: 'active' },
+  commercial: {
+    model: 'prepaid_tokens',
+    effectiveDate: '2026-01-01T00:00:00.000Z',
+    endDate: '2026-12-31T23:59:59.000Z',
+    renewalDate: '2026-12-01T00:00:00.000Z',
+  },
+  prepaid: { balanceTokens: 4250, warningThresholdTokens: 1000 },
+  features: ['sso', 'api_access'],
+  access: { active: access.current, scheduled: access.scheduled },
+  lastUpdated: NOW,
+};
+
+let operatorFail = false;
+
 function operatorRoute(pathname, url, response) {
-  const parts = pathname.split('/').filter(Boolean); // ["api","customers",id,resource,...]
-  if (parts[1] !== 'customers') {
+  if (operatorFail && pathname.includes('portal-view')) {
+    json(response, { error: 'unavailable' }, 503);
+    return;
+  }
+  const parts = pathname.split('/').filter(Boolean);
+  if (parts[0] === 'api' && parts[1] === 'agents') {
+    json(response, agentCatalog);
+    return;
+  }
+
+  let customerId;
+  let resource;
+  if (parts[0] === 'api' && parts[1] === 'customers') {
+    customerId = parts[2];
+    resource = parts[3];
+  } else if (parts[0] === 'service' && parts[1] === 'v1' && parts[2] === 'customers') {
+    customerId = parts[3];
+    resource = parts[4];
+  } else {
     json(response, { error: 'not_found' }, 404);
     return;
   }
-  const customerId = parts[2];
-  const resource = parts[3];
+
   if (customerId !== CUSTOMER_ID) {
     json(response, { error: 'not_found' }, 404);
     return;
@@ -241,28 +275,71 @@ function operatorRoute(pathname, url, response) {
     case 'activity':
       json(response, activity);
       return;
+    case 'portal-view':
+      json(response, portalView);
+      return;
     default:
       json(response, { error: 'not_found' }, 404);
   }
 }
 
 function licenseRoute(pathname, url, response) {
-  if (pathname !== '/api/v1/licenses') {
-    json(response, { error: 'not_found' }, 404);
+  const parts = pathname.split('/').filter(Boolean);
+  if (pathname === '/api/v1/licenses') {
+    const customerId = url.searchParams.get('customerId');
+    if (customerId !== CUSTOMER_ID) {
+      json(response, { error: 'not_found' }, 404);
+      return;
+    }
+    json(response, licenses);
     return;
   }
-  const customerId = url.searchParams.get('customerId');
-  if (customerId !== CUSTOMER_ID) {
-    json(response, { error: 'not_found' }, 404);
+  if (parts[0] === 'service' && parts[1] === 'v1' && parts[2] === 'customers' && parts[4] === 'licenses') {
+    const customerId = parts[3];
+    if (customerId !== CUSTOMER_ID) {
+      json(response, { error: 'not_found' }, 404);
+      return;
+    }
+    const licenseId = parts[5];
+    if (!licenseId) {
+      json(response, licenses);
+      return;
+    }
+    const record = licenses.licenses.find((item) => item.id === licenseId);
+    if (!record) {
+      json(response, { error: 'not_found' }, 404);
+      return;
+    }
+    if (parts[6] === 'document') {
+      const body = JSON.stringify({ signed: true, licenseId });
+      response.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="license-${licenseId}.json"`,
+        'Cache-Control': 'no-store',
+      });
+      response.end(body);
+      return;
+    }
+    json(response, record);
     return;
   }
-  json(response, licenses);
+  json(response, { error: 'not_found' }, 404);
 }
 
 const server = createServer((request, response) => {
   const url = new URL(request.url, 'http://127.0.0.1');
   const pathname = url.pathname;
 
+  if (request.method === 'POST' && pathname === '/e2e/operator-fail') {
+    operatorFail = true;
+    json(response, { ok: true });
+    return;
+  }
+  if (request.method === 'POST' && pathname === '/e2e/operator-ok') {
+    operatorFail = false;
+    json(response, { ok: true });
+    return;
+  }
   if (request.method === 'GET' && pathname === '/certs') {
     json(response, {
       keys: [{ ...publicJwk, kid: KID, alg: 'RS256', use: 'sig' }],

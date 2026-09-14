@@ -364,7 +364,7 @@ button, select, input, textarea { font: inherit; color: inherit; }
 
 .def-row {
   display: grid;
-  grid-template-columns: minmax(140px, 190px) 1fr;
+  grid-template-columns: minmax(110px, 36%) minmax(0, 1fr);
   gap: 16px;
   padding: 9px 0;
   border-bottom: 1px solid rgba(23, 60, 51, 0.08);
@@ -441,16 +441,20 @@ button, select, input, textarea { font: inherit; color: inherit; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: 0 0 auto; }
 
 .status-submitted .status-dot { background: var(--accent); }
-.status-in_review .status-dot { background: #b07a1e; }
-.status-approved .status-dot, .status-completed .status-dot, .status-active .status-dot { background: #2f7d4d; }
+.status-in_review .status-dot, .status-needs_information .status-dot { background: #b07a1e; }
+.status-approved .status-dot { background: #2f6f8f; }
+.status-completed .status-dot, .status-active .status-dot { background: #2f7d4d; }
 .status-rejected .status-dot { background: #b3402c; }
 .status-cancelled .status-dot, .status-disabled .status-dot, .status-archived .status-dot, .status-ended .status-dot { background: var(--faint); }
 .status-scheduled .status-dot, .status-pending .status-dot { background: #b07a1e; }
-.status-expired .status-dot, .status-revoked .status-dot { background: #b3402c; }
+.status-expired .status-dot { background: #8a5a12; }
+.status-revoked .status-dot, .status-suspended .status-dot { background: #b3402c; }
 
-.status-in_review { border-color: #e5cf9f; background: #fdf8ec; }
-.status-approved, .status-completed, .status-active { border-color: #bfd9c8; background: #f2f9f4; }
-.status-rejected, .status-expired, .status-revoked { border-color: #e8c3ba; background: #fdf3f0; }
+.status-in_review, .status-needs_information { border-color: #e5cf9f; background: #fdf8ec; }
+.status-approved { border-style: dashed; border-color: #9fc5d4; background: #f3f8fb; }
+.status-completed, .status-active { border-color: #bfd9c8; background: #f2f9f4; }
+.status-rejected, .status-revoked, .status-suspended { border-color: #e8c3ba; background: #fdf3f0; }
+.status-expired { border-color: #e2c89a; background: #fbf6ea; }
 .status-cancelled, .status-disabled, .status-archived, .status-ended { border-color: var(--line); background: #f4f4f1; }
 .status-scheduled, .status-pending { border-color: #e5cf9f; background: #fdf8ec; }
 
@@ -766,3 +770,67 @@ button, select, input, textarea { font: inherit; color: inherit; }
     transition-duration: 0.01ms !important;
   }
 }
+
+.mono-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.warning-banner,
+.success-banner {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.warning-banner {
+  border: 1px solid #e2c89a;
+  background: #fbf6ea;
+}
+
+.success-banner {
+  border: 1px solid #bfd9c8;
+  background: #f2f9f4;
+}
+
+.skeleton-block {
+  height: 12px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #efeae2 0%, #f7f3ec 50%, #efeae2 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shift 1.2s ease-in-out infinite;
+}
+
+.skeleton-block-short { width: 55%; }
+
+@keyframes skeleton-shift {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.dialog-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.confirm-dialog {
+  position: relative;
+  z-index: 41;
+  width: min(440px, 100%);
+  padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.confirm-dialog h2 { margin: 0 0 8px; font-size: 20px; }
+.confirm-dialog p { margin: 0 0 16px; }

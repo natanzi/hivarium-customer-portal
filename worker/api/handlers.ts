@@ -12,6 +12,7 @@ import type {
   AgentProduct,
   AgentsData,
   CustomerRequestDto,
+  LicenseRecord,
   LicensesData,
   MachineAccountStatus,
   OverviewData,
@@ -34,7 +35,7 @@ import {
 import { ApiError } from './errors';
 import { validateComment, validateCreateRequest } from './validation';
 import type { OperatorPort, UpstreamError } from '../services/operator';
-import type { LicensePort } from '../services/license';
+import type { LicensePort, LicenseDocumentResult } from '../services/license';
 import type { PortalIdentity } from '../auth/context';
 import { canCancelOwnRequests, canCancelRequests, canCommentOnRequests, canSubmitRequestType } from '../auth/roles';
 import type { RequestStatus } from '../../shared/types';
@@ -84,6 +85,7 @@ export async function handleAccountStatus(ctx: HandlerContext): Promise<AccountS
       customerId: ctx.identity.customerId,
       name: profile.ok ? profile.value.name : null,
     },
+    membershipStatus: ctx.identity.membership.status,
     signOutUrl: '/cdn-cgi/access/logout',
   };
   return status;
@@ -96,16 +98,11 @@ export async function handleAccountStatus(ctx: HandlerContext): Promise<AccountS
 export async function handleOverview(ctx: HandlerContext): Promise<OverviewData> {
   const customerId = ctx.identity.customerId;
 
-  const [profile, commercial, access, licenseResult, requestPage] = await Promise.all([
-    ctx.operator.getCustomerProfile(customerId),
-    ctx.operator.getCommercial(customerId),
-    ctx.operator.getAccess(customerId),
+  const [portalView, licenseResult, requestPage] = await Promise.all([
+    ctx.operator.getPortalView(customerId),
     ctx.license.getLicenses(customerId),
     listRequests(ctx.db, { customerId, page: 1, pageSize: 5 }),
   ]);
-
-  const activeArrangement =
-    commercial.ok && commercial.value.active.length > 0 ? commercial.value.active[0] : null;
 
   const recent: OverviewData['requests']['recent'] = requestPage.requests.map((r) => ({
     id: r.id,
@@ -123,33 +120,47 @@ export async function handleOverview(ctx: HandlerContext): Promise<OverviewData>
     ? licenseResult.value.licenses.reduce((sum, l) => sum + l.deployments.length, 0)
     : null;
 
+  const view = portalView.ok ? portalView.value : null;
+  const prepaid = view?.prepaid ?? null;
+  const lowBalance =
+    prepaid?.balanceTokens != null &&
+    prepaid.warningThresholdTokens != null &&
+    prepaid.balanceTokens <= prepaid.warningThresholdTokens;
+
   return {
     organization: {
       customerId,
-      name: profile.ok ? profile.value.name : null,
+      name: view?.organization.name ?? null,
     },
     relationship: {
-      status: profile.ok ? profile.value.status : null,
-      commercialModel: activeArrangement?.model ?? null,
-      periodEnd: activeArrangement?.endDate ?? activeArrangement?.renewalDate ?? null,
-      prepaidBalanceTokens:
-        activeArrangement?.model === 'prepaid_tokens' ? activeArrangement.prepaidBalanceTokens : null,
+      status: view?.organization.status ?? null,
+      commercialModel: (view?.commercial?.model as OverviewData['relationship']['commercialModel']) ?? null,
+      effectiveDate: view?.commercial?.effectiveDate ?? null,
+      periodEnd: view?.commercial?.endDate ?? null,
+      renewalDate: view?.commercial?.renewalDate ?? null,
+      prepaidBalanceTokens: prepaid?.balanceTokens ?? null,
+      warningThresholdTokens: prepaid?.warningThresholdTokens ?? null,
+      lowBalance,
     },
+    featureCount: view ? view.features.length : null,
     agentSummary: {
-      active: access.ok ? access.value.current.length : null,
-      scheduled: access.ok ? access.value.scheduled.length : null,
+      active: view ? view.access.active.length : null,
+      scheduled: view ? view.access.scheduled.length : null,
     },
     licenseSummary: {
       activeLicenses,
       activeDeployments,
     },
     requests: {
-      outstanding: requestPage.requests.filter((r) => ['submitted', 'in_review', 'needs_information'].includes(r.status)).length +
+      outstanding:
+        requestPage.requests.filter((r) => ['submitted', 'in_review', 'needs_information'].includes(r.status)).length +
         Math.max(0, requestPage.total - requestPage.requests.length),
       recent,
     },
+    lastSynchronizedAt: view?.lastUpdated ?? null,
+    dataFreshness: portalView.ok ? 'live' : 'unavailable',
     availability: {
-      operator: labelForResult(profile),
+      operator: labelForResult(portalView),
       license: labelForResult(licenseResult),
     },
   };
@@ -405,4 +416,31 @@ export async function handleAddComment(
   const request = await getRequestDetail(ctx.db, ctx.identity.customerId, requestId);
   if (!request) throw new ApiError(404, 'not_found', 'Request not found.');
   return { request };
+}
+
+export async function handleLicenseDetail(ctx: HandlerContext, licenseId: string): Promise<LicenseRecord> {
+  requireScope(ctx.identity, 'licenses:read');
+  const result = await ctx.license.getLicense(ctx.identity.customerId, licenseId);
+  if (!result.ok) {
+    if (result.error.code === 'not_implemented') {
+      throw new ApiError(404, 'not_found', 'License not found.');
+    }
+    throw upstreamHttpError(result.error);
+  }
+  return result.value;
+}
+
+export async function handleDownloadLicense(
+  ctx: HandlerContext,
+  licenseId: string,
+): Promise<LicenseDocumentResult> {
+  requireScope(ctx.identity, 'licenses:read');
+  const result = await ctx.license.downloadLicenseDocument(ctx.identity.customerId, licenseId);
+  if (!result.ok) {
+    if (result.error.code === 'not_implemented') {
+      throw new ApiError(404, 'not_found', 'The signed license document could not be retrieved.');
+    }
+    throw upstreamHttpError(result.error);
+  }
+  return result.value;
 }

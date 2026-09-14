@@ -17,6 +17,12 @@ import type {
 } from '../../../shared/operator-service';
 import { OPERATOR_SERVICE_API_VERSION } from '../../../shared/operator-service';
 import {
+  requireInternalRequestStatus,
+  requireInternalRequestType,
+  toExternalRequestStatus,
+  toExternalRequestType,
+} from '../../domain/service-enums';
+import {
   canOperatorTransition,
   statusForDecision,
   type OperatorDecision,
@@ -70,7 +76,7 @@ const REQUEST_SELECT = `
 export interface OperatorListFilters {
   customerId?: string;
   status?: RequestStatus;
-  requestType?: RequestType;
+  requestTypes?: RequestType[];
   cursor?: { createdAt: string; id: string };
   limit: number;
 }
@@ -94,12 +100,15 @@ function submittedBy(row: RequestDbRow): OperatorSubmittedBy {
 }
 
 function toSummary(row: RequestDbRow): OperatorRequestSummary {
+  const requestType = toExternalRequestType(requireInternalRequestType(row.request_type));
+  const status = toExternalRequestStatus(requireInternalRequestStatus(row.status));
+  const internalType = requireInternalRequestType(row.request_type);
   return {
     requestId: row.id,
     customerId: row.customer_id,
-    requestType: row.request_type as RequestType,
-    status: row.status as RequestStatus,
-    summary: row.reason.trim() || row.title || REQUEST_TYPE_LABELS[row.request_type as RequestType],
+    requestType,
+    status,
+    summary: row.reason.trim() || row.title || REQUEST_TYPE_LABELS[internalType],
     submittedBy: submittedBy(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -108,8 +117,14 @@ function toSummary(row: RequestDbRow): OperatorRequestSummary {
 
 function mapOperatorEvent(row: EventDbRow): OperatorRequestEvent {
   const metadata = parseJsonObject(row.metadata_json) ?? {};
-  const previousStatus = typeof metadata.previousStatus === 'string' ? (metadata.previousStatus as RequestStatus) : null;
-  const resultingStatus = typeof metadata.resultingStatus === 'string' ? (metadata.resultingStatus as RequestStatus) : null;
+  const previousStatus =
+    typeof metadata.previousStatus === 'string'
+      ? toExternalRequestStatus(requireInternalRequestStatus(metadata.previousStatus))
+      : null;
+  const resultingStatus =
+    typeof metadata.resultingStatus === 'string'
+      ? toExternalRequestStatus(requireInternalRequestStatus(metadata.resultingStatus))
+      : null;
   const operatorNote = typeof metadata.operatorNote === 'string' && metadata.operatorNote.length > 0 ? metadata.operatorNote : null;
   return {
     eventId: row.id,
@@ -170,9 +185,10 @@ export async function listRequestsForOperator(
     where.push(`r.status = ?${binds.length + 1}`);
     binds.push(filters.status);
   }
-  if (filters.requestType) {
-    where.push(`r.request_type = ?${binds.length + 1}`);
-    binds.push(filters.requestType);
+  if (filters.requestTypes && filters.requestTypes.length > 0) {
+    const placeholders = filters.requestTypes.map((_, index) => `?${binds.length + index + 1}`);
+    where.push(`r.request_type IN (${placeholders.join(', ')})`);
+    binds.push(...filters.requestTypes);
   }
   if (filters.cursor) {
     where.push(

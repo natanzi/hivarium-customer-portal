@@ -118,7 +118,7 @@ export class MemoryOperatorService implements OperatorPort {
     };
   }
 
-  async getAccess(): Promise<UpstreamResult<AccessState>> {
+  async getAccess(_customerId?: string): Promise<UpstreamResult<AccessState>> {
     const failed = this.maybeFail('access');
     if (failed) return failed;
     return {
@@ -293,13 +293,20 @@ export class MemoryOperatorService implements OperatorPort {
     };
   }
 
-  async getPortalView(): Promise<UpstreamResult<PortalView>> {
+  async getPortalView(customerId?: string): Promise<UpstreamResult<PortalView>> {
     const failed = this.maybeFail('portal-view');
     if (failed) return failed;
+    const id = customerId ?? this.opts.customerId ?? FIXTURE_CUSTOMER_ID;
+    const access = await this.getAccess(id);
+    const grants = access.ok ? access.value : { current: [], scheduled: [] };
     return {
       ok: true,
       value: {
-        organization: { customerId: this.opts.customerId ?? FIXTURE_CUSTOMER_ID, name: 'Acme Instruments (Dev Fixture)', status: 'active' },
+        organization: {
+          customerId: id,
+          name: id === 'globex-dev-002' ? 'Globex Analytics (Dev Fixture)' : 'Acme Instruments (Dev Fixture)',
+          status: 'active',
+        },
         commercial: {
           model: 'prepaid_tokens',
           effectiveDate: '2026-01-01T00:00:00.000Z',
@@ -309,8 +316,8 @@ export class MemoryOperatorService implements OperatorPort {
         prepaid: { balanceTokens: 4250, warningThresholdTokens: 1000 },
         features: ['sso', 'api_access'],
         access: {
-          active: [],
-          scheduled: [],
+          active: grants.current,
+          scheduled: grants.scheduled,
         },
         lastUpdated: NOW,
       },
@@ -323,7 +330,7 @@ export class MemoryLicenseService implements LicensePort {
     private readonly opts: { customerId?: string; failWith?: 'missing' | 'unreachable' | 'not_implemented' } = {},
   ) { }
 
-  async getLicenses(): Promise<UpstreamResult<LicenseState>> {
+  async getLicenses(customerId?: string): Promise<UpstreamResult<LicenseState>> {
     if (this.opts.failWith === 'missing') {
       return { ok: false, error: { code: 'missing_binding', detail: 'missing binding' } };
     }
@@ -333,6 +340,10 @@ export class MemoryLicenseService implements LicensePort {
     if (this.opts.failWith === 'not_implemented') {
       return { ok: false, error: { code: 'not_implemented', detail: 'not implemented upstream' } };
     }
+    const id = customerId ?? this.opts.customerId ?? FIXTURE_CUSTOMER_ID;
+    if (id !== FIXTURE_CUSTOMER_ID && id !== (this.opts.customerId ?? FIXTURE_CUSTOMER_ID)) {
+      return { ok: true, value: { customerId: id, licenses: [] } };
+    }
     return {
       ok: true,
       value: {
@@ -341,6 +352,8 @@ export class MemoryLicenseService implements LicensePort {
           {
             id: 'lic-scan-2026',
             licenseType: 'subscription',
+            product: 'Threat Surface Scanner suite',
+            revision: '3',
             status: 'active',
             issuedAt: '2026-01-01T00:00:00.000Z',
             expiresAt: '2026-12-31T23:59:59.000Z',
@@ -382,7 +395,7 @@ export class MemoryLicenseService implements LicensePort {
   }
 
   async getLicense(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseRecord>> {
-    const licenses = await this.getLicenses();
+    const licenses = await this.getLicenses(customerId);
     if (!licenses.ok) return licenses;
     const l = licenses.value.licenses.find(x => x.id === licenseId);
     if (!l) return { ok: false, error: { code: 'not_implemented', detail: 'not found' } };
@@ -399,7 +412,19 @@ export class MemoryLicenseService implements LicensePort {
     if (this.opts.failWith === 'not_implemented') {
       return { ok: false, error: { code: 'not_implemented', detail: 'not implemented upstream' } };
     }
+    if (customerId !== (this.opts.customerId ?? FIXTURE_CUSTOMER_ID)) {
+      return { ok: false, error: { code: 'not_implemented', detail: 'Document not found' } };
+    }
+    if (this.opts.failWith === 'missing') {
+      return { ok: false, error: { code: 'missing_binding', detail: 'missing binding' } };
+    }
+    if (this.opts.failWith === 'unreachable') {
+      return { ok: false, error: { code: 'unreachable', detail: 'unreachable' } };
+    }
+    if (this.opts.failWith === 'not_implemented') {
+      return { ok: false, error: { code: 'not_implemented', detail: 'not implemented upstream' } };
+    }
     const encoder = new TextEncoder();
-    return { ok: true, value: { body: encoder.encode(`{"signed":true,"licenseId":"${licenseId}"}`).buffer as ArrayBuffer, contentType: 'application/json', contentDisposition: null } };
+    return { ok: true, value: { body: encoder.encode(`{"signed":true,"licenseId":"${licenseId}"}`).buffer as ArrayBuffer, contentType: 'application/json', contentDisposition: `attachment; filename="license-${licenseId}.json"` } };
   }
 }

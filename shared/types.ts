@@ -60,13 +60,20 @@ export type RequestEventType =
 export type ActorType = 'customer' | 'operator' | 'system';
 
 export interface RequestPayloadMap {
-  renewal: { desiredTerm?: 'monthly' | 'annual'; notes?: string };
-  capacity_increase: { capacityType?: 'seats' | 'agents'; desiredCapacity: number; notes?: string };
-  prepaid_credit: { amountTokens: number; notes?: string };
-  agent_access: { agentProductId: string; purpose?: string; notes?: string };
+  renewal: { licenseId?: string; desiredTerm?: 'monthly' | 'annual'; notes?: string };
+  capacity_increase: {
+    capacityType?: 'seats' | 'agents';
+    desiredCapacity?: number;
+    currentPlan?: string;
+    requestedPlan?: string;
+    effectiveDatePreference?: string;
+    notes?: string;
+  };
+  prepaid_credit: { amountTokens: number; notes?: string; urgency?: string };
+  agent_access: { agentProductId: string; purpose?: string; startDate?: string; notes?: string };
   license_support: { licenseId?: string; issueDescription: string; notes?: string };
   deployment_support: { deploymentId?: string; environment?: string; issueDescription: string; notes?: string };
-  general_support: { topic?: string; description: string; notes?: string };
+  general_support: { topic?: string; subject?: string; description: string; notes?: string; severity?: string };
 }
 
 export interface RequestEventDto {
@@ -120,13 +127,13 @@ export interface RequestListPage {
 }
 
 export const REQUEST_TYPE_LABELS: Record<RequestType, string> = {
-  renewal: 'Renewal request',
-  capacity_increase: 'Capacity increase',
-  prepaid_credit: 'Prepaid credit',
-  agent_access: 'Agent access',
+  renewal: 'License renewal',
+  capacity_increase: 'Plan change',
+  prepaid_credit: 'Token credit',
+  agent_access: 'Additional agent access',
   license_support: 'License support',
   deployment_support: 'Deployment support',
-  general_support: 'General support',
+  general_support: 'Support',
 };
 
 // ---------------------------------------------------------------------------
@@ -260,7 +267,9 @@ export interface DeploymentRecord {
 export interface LicenseRecord {
   id: string;
   licenseType: string;
-  status: 'active' | 'expired' | 'revoked' | 'pending';
+  product?: string;
+  revision?: string;
+  status: 'active' | 'expired' | 'revoked' | 'pending' | 'suspended';
   issuedAt: string;
   expiresAt: string;
   permittedAgentProducts: string[];
@@ -292,6 +301,7 @@ export interface SessionAccountStatus {
   auth: 'session';
   user: { membershipId: string; email: string; displayName: string; role: PortalRole };
   organization: { customerId: string; name: string | null };
+  membershipStatus: MembershipStatus;
   capabilities: Capabilities;
   signOutUrl: string;
 }
@@ -311,12 +321,19 @@ export interface OverviewData {
   relationship: {
     status: string | null;
     commercialModel: CommercialModel | null;
+    effectiveDate: string | null;
     periodEnd: string | null;
+    renewalDate: string | null;
     prepaidBalanceTokens: number | null;
+    warningThresholdTokens: number | null;
+    lowBalance: boolean;
   };
+  featureCount: number | null;
   agentSummary: { active: number | null; scheduled: number | null };
   licenseSummary: { activeLicenses: number | null; activeDeployments: number | null };
   requests: { outstanding: number; recent: RecentRequestDto[] };
+  lastSynchronizedAt: string | null;
+  dataFreshness: 'live' | 'unavailable';
   availability: ServiceAvailability;
 }
 

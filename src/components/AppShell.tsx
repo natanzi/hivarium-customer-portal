@@ -5,10 +5,8 @@ import { RoleBadge } from '../role-badge';
 
 const NAV_ITEMS = [
   { to: '/overview', label: 'Overview' },
-  { to: '/subscription', label: 'Subscription' },
   { to: '/agents', label: 'Agents' },
-  { to: '/licenses', label: 'Licenses & deployments' },
-  { to: '/usage', label: 'Usage' },
+  { to: '/licenses', label: 'Licenses' },
   { to: '/requests', label: 'Requests' },
   { to: '/account', label: 'Account' },
 ];
@@ -52,6 +50,7 @@ function Nav({ session, onNavigate }: { session: SessionAccountStatus; onNavigat
           <li key={item.to}>
             <NavLink
               to={item.to}
+              end={item.to !== '/requests'}
               onClick={onNavigate}
               className={({ isActive }) => (isActive ? 'active' : undefined)}
             >
@@ -71,12 +70,11 @@ function Nav({ session, onNavigate }: { session: SessionAccountStatus; onNavigat
 
 export default function AppShell({ session }: { session: SessionAccountStatus }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const drawerRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!drawerOpen) return;
-    const previous = document.activeElement as HTMLElement | null;
     drawerCloseRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setDrawerOpen(false);
@@ -86,7 +84,7 @@ export default function AppShell({ session }: { session: SessionAccountStatus })
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.classList.remove('no-scroll');
-      previous?.focus();
+      menuButtonRef.current?.focus();
     };
   }, [drawerOpen]);
 
@@ -100,14 +98,15 @@ export default function AppShell({ session }: { session: SessionAccountStatus })
 
       <div className="main-column">
         <header className="topbar">
-<button
-          type="button"
-          className="menu-button"
-          aria-label="Open navigation menu"
-          aria-expanded={drawerOpen}
-          aria-controls="mobile-drawer"
-          onClick={() => setDrawerOpen(true)}
-        >
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className="menu-button"
+            aria-label="Open navigation menu"
+            aria-expanded={drawerOpen}
+            aria-controls="mobile-drawer"
+            onClick={() => setDrawerOpen(true)}
+          >
             <span className="menu-icon" aria-hidden="true" />
             <span>Menu</span>
           </button>
@@ -129,7 +128,7 @@ export default function AppShell({ session }: { session: SessionAccountStatus })
               aria-label="Close navigation menu"
               onClick={() => setDrawerOpen(false)}
             />
-            <div className="drawer" ref={drawerRef} role="dialog" aria-modal="true" aria-label="Navigation menu">
+            <div className="drawer" role="dialog" aria-modal="true" aria-label="Navigation menu">
               <header className="drawer-header">
                 <Brand />
                 <button

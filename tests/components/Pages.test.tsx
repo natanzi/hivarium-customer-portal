@@ -49,14 +49,17 @@ describe('Overview', () => {
       status: 200,
       body: {
         organization: { customerId: 'acme-dev-001', name: 'Acme Instruments' },
-        relationship: { status: 'active', commercialModel: 'prepaid_tokens', periodEnd: '2026-12-31T00:00:00.000Z', prepaidBalanceTokens: 4250 },
+        relationship: { status: 'active', commercialModel: 'prepaid_tokens', effectiveDate: '2026-01-01T00:00:00.000Z', periodEnd: '2026-12-31T00:00:00.000Z', renewalDate: '2026-12-01T00:00:00.000Z', prepaidBalanceTokens: 4250, warningThresholdTokens: 1000, lowBalance: false },
+        featureCount: 2,
         agentSummary: { active: 2, scheduled: 1 },
         licenseSummary: { activeLicenses: 2, activeDeployments: 2 },
         requests: { outstanding: 1, recent: [{ id: 'req-1', requestType: 'renewal', status: 'submitted', title: 'Renewal request', createdAt: '2026-08-01T00:00:00.000Z' }] },
+        lastSynchronizedAt: '2026-09-01T12:00:00.000Z',
+        dataFreshness: 'live',
         availability: { operator: 'ok', license: 'ok' },
       },
     });
-    expect(await screen.findByRole('heading', { name: 'Relationship overview' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByText('Acme Instruments')).toBeInTheDocument();
     expect(screen.getByText('Prepaid tokens')).toBeInTheDocument();
     expect(screen.getByText('4,250 tokens')).toBeInTheDocument();
@@ -67,10 +70,13 @@ describe('Overview', () => {
     installFetchMock({
       '/api/v1/overview': ok({
         organization: { customerId: 'acme-dev-001', name: null },
-        relationship: { status: null, commercialModel: null, periodEnd: null, prepaidBalanceTokens: null },
+        relationship: { status: null, commercialModel: null, effectiveDate: null, periodEnd: null, renewalDate: null, prepaidBalanceTokens: null, warningThresholdTokens: null, lowBalance: false },
+        featureCount: null,
         agentSummary: { active: null, scheduled: null },
         licenseSummary: { activeLicenses: null, activeDeployments: null },
         requests: { outstanding: 0, recent: [] },
+        lastSynchronizedAt: null,
+        dataFreshness: 'unavailable',
         availability: { operator: 'missing', license: 'missing' },
       }),
     });
@@ -79,8 +85,71 @@ describe('Overview', () => {
         <Overview />
       </MemoryRouter>,
     );
-    await screen.findAllByText('Section temporarily unavailable');
-    expect(screen.getAllByText(/temporarily unavailable/i).length).toBeGreaterThanOrEqual(2);
+    expect((await screen.findAllByText('Operator Service unavailable')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('License Service unavailable').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows a low-balance warning for prepaid accounts at the threshold', async () => {
+    installFetchMock({
+      '/api/v1/overview': ok({
+        organization: { customerId: 'acme-dev-001', name: 'Acme Instruments' },
+        relationship: {
+          status: 'active',
+          commercialModel: 'prepaid_tokens',
+          effectiveDate: '2026-01-01T00:00:00.000Z',
+          periodEnd: '2026-12-31T00:00:00.000Z',
+          renewalDate: null,
+          prepaidBalanceTokens: 400,
+          warningThresholdTokens: 1000,
+          lowBalance: true,
+        },
+        featureCount: 1,
+        agentSummary: { active: 1, scheduled: 0 },
+        licenseSummary: { activeLicenses: 1, activeDeployments: 1 },
+        requests: { outstanding: 0, recent: [] },
+        lastSynchronizedAt: '2026-09-01T12:00:00.000Z',
+        dataFreshness: 'live',
+        availability: { operator: 'ok', license: 'ok' },
+      }),
+    });
+    render(
+      <MemoryRouter>
+        <Overview />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/Low prepaid balance/)).toBeInTheDocument();
+  });
+
+  it('does not invent a prepaid balance for non-prepaid accounts', async () => {
+    installFetchMock({
+      '/api/v1/overview': ok({
+        organization: { customerId: 'acme-dev-001', name: 'Acme Instruments' },
+        relationship: {
+          status: 'active',
+          commercialModel: 'annual_contract',
+          effectiveDate: '2026-01-01T00:00:00.000Z',
+          periodEnd: '2026-12-31T00:00:00.000Z',
+          renewalDate: '2026-12-01T00:00:00.000Z',
+          prepaidBalanceTokens: null,
+          warningThresholdTokens: null,
+          lowBalance: false,
+        },
+        featureCount: 2,
+        agentSummary: { active: 2, scheduled: 0 },
+        licenseSummary: { activeLicenses: 1, activeDeployments: 1 },
+        requests: { outstanding: 0, recent: [] },
+        lastSynchronizedAt: '2026-09-01T12:00:00.000Z',
+        dataFreshness: 'live',
+        availability: { operator: 'ok', license: 'ok' },
+      }),
+    });
+    render(
+      <MemoryRouter>
+        <Overview />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('Not applicable')).toBeInTheDocument();
+    expect(screen.queryByText(/Low prepaid balance/)).not.toBeInTheDocument();
   });
 
   it('shows an error state with retry when the request fails', async () => {
@@ -248,7 +317,10 @@ describe('Agents', () => {
     expect(screen.getByText('security')).toBeInTheDocument();
     expect(screen.getByText('lic-1')).toBeInTheDocument();
     expect(screen.getByText('dep-1')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Request agent access' })).toHaveAttribute('href', '/requests/new?type=agent_access');
+    expect(screen.getByRole('link', { name: 'Request additional agent access' })).toHaveAttribute(
+      'href',
+      '/requests/new?type=agent_access',
+    );
   });
 
   it('renders the catalog as available-on-request and never as self-grantable', async () => {
@@ -303,9 +375,9 @@ describe('Licenses', () => {
         <Licenses />
       </MemoryRouter>,
     );
-    expect(await screen.findByText('lic-1')).toBeInTheDocument();
+    expect((await screen.findAllByText('lic-1')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('dep-1')).toBeInTheDocument();
-    expect(screen.getByText('Online')).toBeInTheDocument();
+    expect(screen.getAllByText('Online').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
   });
 
@@ -319,6 +391,38 @@ describe('Licenses', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole('alert')).toBeInTheDocument();
+  });
+
+  it('shows an error when a signed license cannot be downloaded', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    installFetchMock({
+      '/api/v1/licenses': ok({
+        licenses: {
+          customerId: 'acme-dev-001',
+          licenses: [
+            {
+              id: 'lic-1',
+              licenseType: 'subscription',
+              status: 'active',
+              issuedAt: '2026-01-01T00:00:00.000Z',
+              expiresAt: '2026-12-31T23:59:59.000Z',
+              permittedAgentProducts: [],
+              deployments: [],
+            },
+          ],
+        },
+        availability: { operator: 'ok', license: 'ok' },
+      }),
+      '/api/v1/licenses/lic-1/document': failed(503, 'upstream_unavailable', 'The signed license document could not be retrieved.'),
+    });
+    render(
+      <MemoryRouter>
+        <Licenses />
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Download signed license' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be retrieved/);
   });
 });
 
@@ -400,7 +504,7 @@ describe('unavailable and unauthorized surfaces', () => {
       </MemoryRouter>,
     );
     expect(screen.getByRole('heading', { name: 'Temporarily unavailable' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute('href', '/overview');
   });
 
   it('shows the unauthorized page with a sign-out link', async () => {

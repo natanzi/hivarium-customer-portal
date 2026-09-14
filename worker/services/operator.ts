@@ -459,9 +459,11 @@ function validateLicenseState(value: unknown): { ok: true; value: unknown } | { 
     return {
       id: asString(l.id) ?? '',
       licenseType: asString(l.licenseType) ?? asString(l.type) ?? 'license',
-      status: (asString(l.status) ?? 'active') as 'active' | 'expired' | 'revoked' | 'pending',
+      status: (asString(l.status) ?? 'active') as 'active' | 'expired' | 'revoked' | 'pending' | 'suspended',
       issuedAt: asString(l.issuedAt) ?? asString(l.issued_at) ?? '',
       expiresAt: asString(l.expiresAt) ?? asString(l.expires_at) ?? '',
+      product: asString(l.product) ?? asString(l.productName) ?? undefined,
+      revision: asString(l.revision) ?? undefined,
       permittedAgentProducts: (asArray(l.permittedAgentProducts) ?? []).map((p) => asString(p)).filter((p): p is string => p !== null),
       deployments: deployments.filter(Boolean),
     };

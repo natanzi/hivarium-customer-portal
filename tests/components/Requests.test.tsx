@@ -14,6 +14,7 @@ const session: SessionAccountStatus = {
   user: { membershipId: 'mbr-acme-admin-001', email: 'dev.admin@acme.example', displayName: 'Dev Admin', role: 'customer_admin' },
   organization: { customerId: 'acme-dev-001', name: 'Acme Instruments' },
   capabilities: { requestTypes: ['renewal', 'capacity_increase', 'prepaid_credit', 'agent_access', 'license_support', 'deployment_support', 'general_support'], canCancel: true, canComment: true },
+  membershipStatus: 'active',
   signOutUrl: '/cdn-cgi/access/logout',
 };
 
@@ -74,8 +75,10 @@ describe('RequestNew', () => {
     });
     renderWithSession(<RequestNew />);
     await user.selectOptions(await screen.findByLabelText('Request type'), 'renewal');
-    await user.selectOptions(screen.getByLabelText('Desired term'), 'annual');
-    await user.type(screen.getByLabelText('Notes'), 'Extend for another year.');
+    const licenseField = (await screen.findAllByLabelText(/Selected license/))[0];
+    await user.type(licenseField, 'lic-scan-2026');
+    await user.selectOptions(screen.getByLabelText('Requested duration'), 'annual');
+    await user.type(screen.getByLabelText('Renewal note'), 'Extend for another year.');
     await user.click(screen.getByRole('button', { name: 'Submit request' }));
     expect(await screen.findByRole('heading', { name: 'Renewal request' })).toBeInTheDocument();
   });
@@ -88,7 +91,7 @@ describe('RequestNew', () => {
     });
     renderWithSession(<RequestNew />);
     await user.selectOptions(await screen.findByLabelText('Request type'), 'capacity_increase');
-    await user.type(await screen.findByLabelText(/Desired capacity/), '50');
+    await user.type(await screen.findByLabelText(/Requested plan or requirements/), 'Increase agent capacity to 50');
     await user.click(screen.getByRole('button', { name: 'Submit request' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/desiredCapacity/);
   });
@@ -190,6 +193,39 @@ describe('RequestDetail', () => {
     await user.type(await screen.findByLabelText('Comment'), 'Any update?');
     await user.click(screen.getByRole('button', { name: 'Post comment' }));
     expect(await screen.findByText('Any update?')).toBeInTheDocument();
+  });
+
+  it('opens an accessible cancel dialog and restores focus', async () => {
+    const user = userEvent.setup();
+    installFetchMock({
+      '/api/v1/account/status': ok(session),
+      '/api/v1/requests/req-test-001': ok(requestDto()),
+      '/api/v1/requests/req-test-001/cancel': created({ request: requestDto({ status: 'cancelled', cancelledAt: '2026-08-21T10:00:00.000Z' }) }),
+    });
+    renderWithSession(<RequestDetail />, '/requests/req-test-001');
+    const trigger = await screen.findByRole('button', { name: 'Cancel request' });
+    await user.click(trigger);
+    expect(await screen.findByRole('dialog', { name: 'Cancel this request?' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('does not render operator notes or hidden metadata on the customer timeline', async () => {
+    installFetchMock({
+      '/api/v1/account/status': ok(session),
+      '/api/v1/requests/req-test-001': ok(
+        requestDto({
+          events: [
+            { id: 'evt-1', requestId: 'req-test-001', eventType: 'created', actorType: 'customer', actorReference: 'mbr-acme-admin-001', actorLabel: 'Customer', message: 'Request submitted.', metadata: {}, createdAt: '2026-08-20T10:00:00.000Z' },
+            { id: 'evt-hidden', requestId: 'req-test-001', eventType: 'operator_note', actorType: 'operator', actorReference: 'operator-console', actorLabel: 'Hivarium', message: 'internal only', metadata: { operatorNote: 'secret' }, createdAt: '2026-08-20T11:00:00.000Z' },
+          ],
+        }),
+      ),
+    });
+    renderWithSession(<RequestDetail />, '/requests/req-test-001');
+    expect(await screen.findByText(/Request submitted/)).toBeInTheDocument();
+    expect(screen.queryByText('internal only')).not.toBeInTheDocument();
+    expect(screen.queryByText('secret')).not.toBeInTheDocument();
   });
 });
 

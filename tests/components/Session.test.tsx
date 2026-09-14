@@ -9,6 +9,7 @@ const session: SessionAccountStatus = {
   user: { membershipId: 'mbr-acme-admin-001', email: 'dev.admin@acme.example', displayName: 'Dev Admin', role: 'customer_admin' },
   organization: { customerId: 'acme-dev-001', name: 'Acme Instruments' },
   capabilities: { requestTypes: ['renewal'], canCancel: true, canComment: true },
+  membershipStatus: 'active',
   signOutUrl: '/cdn-cgi/access/logout',
 };
 
@@ -30,7 +31,7 @@ describe('session guard', () => {
     render(<App />);
     expect(await screen.findByRole('status', { name: /checking your session/i })).toBeInTheDocument();
     gate.resolve({ status: 200, body: session });
-    expect(await screen.findByRole('heading', { name: 'Relationship overview' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
   });
 
   it('redirects to /unauthorized when the session cannot be verified', async () => {
@@ -54,7 +55,7 @@ describe('session guard', () => {
     });
     render(<App />);
     expect(await screen.findByRole('link', { name: 'Sign out' })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: 'Relationship overview' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('status', { name: /checking your session/i })).not.toBeInTheDocument());
   });
 

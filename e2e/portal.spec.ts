@@ -7,9 +7,9 @@ test.describe('portal smoke and navigation', () => {
     await signIn(context, EMAILS.admin);
     await page.goto('/overview');
     await expect(page).toHaveURL(/\/overview$/);
-    await expect(page.getByRole('heading', { name: 'Relationship overview' })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Relationship' })).toContainText('Acme Instruments (Dev Fixture)');
-    await expect(page.getByRole('region', { name: 'Relationship' })).toContainText('Prepaid tokens');
+    await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Organization' })).toContainText('Acme Instruments (Dev Fixture)');
+    await expect(page.getByRole('region', { name: 'Organization' })).toContainText('Prepaid tokens');
     assertClean();
   });
 
@@ -18,24 +18,22 @@ test.describe('portal smoke and navigation', () => {
     await signIn(context, EMAILS.admin);
     await page.goto('/');
     await expect(page).toHaveURL(/\/overview$/, { timeout: 10_000 });
-    await expect(page.getByRole('heading', { name: 'Relationship overview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
     await expect(page.getByText('Redirecting')).toHaveCount(0);
     assertClean();
   });
 
-  test('overview to subscription navigation', async ({ context, page }, testInfo) => {
+  test('overview to agents navigation', async ({ context, page }, testInfo) => {
     await signIn(context, EMAILS.admin);
     await page.goto('/overview');
     if (testInfo.project.name === 'mobile') {
       await page.getByRole('button', { name: 'Open navigation menu' }).click();
-      await page.getByRole('dialog', { name: 'Navigation menu' }).getByRole('link', { name: 'Subscription', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Navigation menu' }).getByRole('link', { name: 'Agents', exact: true }).click();
     } else {
-      await page.getByRole('link', { name: 'Subscription', exact: true }).click();
+      await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Agents', exact: true }).click();
     }
-    await expect(page).toHaveURL(/\/subscription$/);
-    await expect(page.getByRole('heading', { name: 'Subscription' })).toBeVisible();
-    await expect(page.getByText('Prepaid tokens').first()).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Request renewal' })).toBeVisible();
+    await expect(page).toHaveURL(/\/agents$/);
+    await expect(page.getByRole('heading', { name: 'Agents', exact: true })).toBeVisible();
   });
 
   test('customer cannot see another tenant', async ({ context, page }) => {
@@ -58,17 +56,17 @@ test.describe('entitlement views', () => {
     await expect(page.getByRole('heading', { name: 'Threat Surface Scanner' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Signal Relay Agent' })).toBeVisible();
     await expect(page.getByText('Audit Trail Agent')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Request agent access' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Request additional agent access' }).first()).toBeVisible();
   });
 
   test('license and deployment display', async ({ context, page }) => {
     await signIn(context, EMAILS.admin);
     await page.goto('/licenses');
-    await expect(page.getByRole('heading', { name: 'Licenses & deployments' })).toBeVisible();
-    await expect(page.getByText('lic-scan-2026')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Licenses', exact: true })).toBeVisible();
+    await expect(page.getByText('lic-scan-2026').first()).toBeVisible();
     await expect(page.getByText('dep-prod-001')).toBeVisible();
     await expect(page.getByText('1 / 3')).toBeVisible();
-    await expect(page.getByText('Online')).toBeVisible();
+    await expect(page.getByText('Online').first()).toBeVisible();
   });
 
   test('prepaid usage display', async ({ context, page }) => {
@@ -88,16 +86,16 @@ test.describe('requests workflow', () => {
     await signIn(context, EMAILS.admin);
     await page.goto('/requests/new');
     await page.getByLabel('Request type').selectOption('capacity_increase');
-    await page.getByLabel(/Desired capacity/).fill('15');
-    await page.getByLabel('Notes').fill('E2E batch run.');
+    await page.getByLabel(/Requested plan or requirements/).fill('Increase evaluation capacity for Q4.');
+    await page.getByLabel('Note').fill('E2E batch run.');
     await page.getByRole('button', { name: 'Submit request' }).click();
     await expect(page).toHaveURL(/\/requests\/req-/, { timeout: 10_000 });
-    await expect(page.getByRole('heading', { name: 'Capacity increase' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Plan change' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Cancel request' })).toBeVisible();
 
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Capacity increase' })).toBeVisible();
-    await expect(page.getByText('E2E batch run.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Plan change' })).toBeVisible();
+    await expect(page.getByText('E2E batch run.').first()).toBeVisible();
     assertClean();
   });
 
@@ -105,12 +103,14 @@ test.describe('requests workflow', () => {
     await signIn(context, EMAILS.admin);
     await page.goto('/requests/new');
     await page.getByLabel('Request type').selectOption('general_support');
+    await page.getByLabel('Subject').fill('Please cancel me');
     await page.getByLabel('Description').fill('Please cancel me after creation.');
     await page.getByRole('button', { name: 'Submit request' }).click();
     await expect(page).toHaveURL(/\/requests\/req-/, { timeout: 10_000 });
 
-    page.on('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Cancel request' }).click();
+    await expect(page.getByRole('dialog', { name: 'Cancel this request?' })).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel request' }).click();
     await expect(page.getByText(/Request cancelled/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Cancel request' })).toHaveCount(0);
   });
@@ -231,19 +231,73 @@ test.describe('state pages and mobile smoke', () => {
     await page.getByRole('button', { name: 'Open navigation menu' }).click();
     const drawer = page.getByRole('dialog', { name: 'Navigation menu' });
     await expect(drawer).toBeVisible();
-    await drawer.getByRole('link', { name: 'Usage' }).click();
-    await expect(page).toHaveURL(/\/usage$/);
-    await expect(page.getByRole('heading', { name: 'Usage' })).toBeVisible();
+    await drawer.getByRole('link', { name: 'Agents', exact: true }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+    await expect(page.getByRole('heading', { name: 'Agents', exact: true })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
   test('no horizontal page overflow on key pages', async ({ context, page }) => {
     await signIn(context, EMAILS.admin);
-    for (const path of ['/overview', '/subscription', '/agents', '/licenses', '/usage', '/requests']) {
+    for (const path of ['/overview', '/agents', '/licenses', '/requests', '/account']) {
       await page.goto(path);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow, `horizontal overflow on ${path}`).toBeLessThanOrEqual(0);
+    }
+  });
+});
+
+test.describe('customer portal workflows', () => {
+  test('customer views licenses and downloads a signed fixture', async ({ context, page }) => {
+    await signIn(context, EMAILS.admin);
+    await page.goto('/licenses');
+    await expect(page.getByRole('heading', { name: 'Licenses', exact: true })).toBeVisible();
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Download signed license' }).first().click(),
+    ]);
+    expect(download.suggestedFilename()).toContain('license-');
+  });
+
+  test('customer submits a license-renewal request', async ({ context, page }) => {
+    await signIn(context, EMAILS.admin);
+    await page.goto('/requests/new?type=renewal&license=lic-scan-2026');
+    await page.getByLabel('Requested duration').selectOption('annual');
+    await page.getByLabel('Business reason (optional)').fill('Need continuity for production scanners.');
+    await page.getByRole('button', { name: 'Submit request' }).click();
+    await expect(page).toHaveURL(/\/requests\/req-/);
+    await expect(page.getByText(/Request submitted/).first()).toBeVisible();
+    await expect(page.getByText(/lic-scan-2026/).first()).toBeVisible();
+  });
+
+  test('customer submits an additional-agent request', async ({ context, page }) => {
+    await signIn(context, EMAILS.admin);
+    await page.goto('/requests/new?type=agent_access&agent=agent-audit-001');
+    await page.getByLabel('Intended use case').fill('Scheduled audit coverage.');
+    await page.getByRole('button', { name: 'Submit request' }).click();
+    await expect(page).toHaveURL(/\/requests\/req-/);
+    await expect(page.getByText('agent-audit-001')).toBeVisible();
+  });
+
+  test('customer views the request timeline', async ({ context, page }) => {
+    await signIn(context, EMAILS.admin);
+    await page.goto('/requests/req-acme-submitted-001');
+    await expect(page.getByRole('list', { name: 'Request history' })).toBeVisible();
+    await expect(page.getByText(/Request submitted/)).toBeVisible();
+    await expect(page.getByText('operatorNote')).toHaveCount(0);
+  });
+
+  test('upstream Operator Service failure is recoverable', async ({ context, page }) => {
+    await signIn(context, EMAILS.admin);
+    const fail = await page.request.post('http://127.0.0.1:8789/e2e/operator-fail');
+    expect(fail.ok()).toBeTruthy();
+    try {
+      await page.goto('/overview');
+      await expect(page.getByText('Operator Service unavailable').first()).toBeVisible();
+      await expect(page.getByText(/lorem ipsum/i)).toHaveCount(0);
+    } finally {
+      await page.request.post('http://127.0.0.1:8789/e2e/operator-ok');
     }
   });
 });

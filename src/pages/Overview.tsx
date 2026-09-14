@@ -10,10 +10,11 @@ import {
   LinkButton,
   LoadingState,
   Page,
-  SectionUnavailable,
+  UnavailableState,
   StatCard,
   StatusPill,
   formatDate,
+  formatDateTime,
   formatTokens,
   modelLabel,
 } from '../components/ui';
@@ -21,11 +22,25 @@ import {
 export default function Overview() {
   const state = useApi<OverviewData>(() => apiFetch('/api/v1/overview'), []);
 
-  if (state.status === 'loading') return <Page title="Overview"><LoadingState /></Page>;
-  if (state.status === 'error') {
+  if (state.status === 'loading') {
     return (
       <Page title="Overview">
-        <ErrorState message={state.error.message} onRetry={state.retry} />
+        <LoadingState label="Loading overview…" />
+      </Page>
+    );
+  }
+  if (state.status === 'error') {
+    const expired = state.error.code === 'unauthorized';
+    return (
+      <Page title="Overview">
+        <ErrorState
+          message={
+            expired
+              ? 'Your portal session has expired. Sign in again to continue.'
+              : state.error.message
+          }
+          onRetry={expired ? undefined : state.retry}
+        />
       </Page>
     );
   }
@@ -33,25 +48,14 @@ export default function Overview() {
   const data = state.data;
   const operatorAvailable = data.availability.operator === 'ok';
   const licenseAvailable = data.availability.license === 'ok';
-  const nextAction = operatorAvailable
-    ? {
-        label: 'Submit a request',
-        detail: 'Renewals, capacity, prepaid credit, agent access and support requests.',
-        to: '/requests/new',
-      }
-    : {
-        label: 'View your requests',
-        detail: 'Track the status and history of requests you have submitted.',
-        to: '/requests',
-      };
 
   return (
     <Page
       eyebrow="Customer workspace"
-      title="Relationship overview"
+      title="Overview"
       description={
         data.organization.name
-          ? `A concise view of your ${data.organization.name} relationship with Hivarium.`
+          ? `A concise view of the ${data.organization.name} relationship with Hivarium.`
           : 'A concise view of your relationship with Hivarium.'
       }
       actions={
@@ -60,15 +64,33 @@ export default function Overview() {
         </LinkButton>
       }
     >
+      {data.dataFreshness === 'unavailable' ? (
+        <p className="hint-text" role="status">
+          Operator Console data is not currently available. Request history below is from the portal.
+        </p>
+      ) : data.lastSynchronizedAt ? (
+        <p className="hint-text" role="status">
+          Last synchronized {formatDateTime(data.lastSynchronizedAt)} · live Operator Console data
+        </p>
+      ) : null}
+
       <div className="overview-grid">
-        <Card title="Relationship">
+        <Card title="Organization">
           {operatorAvailable ? (
             <DefList
               items={[
                 { term: 'Organization', detail: data.organization.name ?? '—' },
-                { term: 'Status', detail: data.relationship.status ? <StatusPill status={data.relationship.status} /> : '—' },
-                { term: 'Commercial model', detail: data.relationship.commercialModel ? modelLabel(data.relationship.commercialModel) : '—' },
-                { term: 'Period ends', detail: formatDate(data.relationship.periodEnd) },
+                {
+                  term: 'Account status',
+                  detail: data.relationship.status ? <StatusPill status={data.relationship.status} /> : '—',
+                },
+                {
+                  term: 'Commercial model',
+                  detail: data.relationship.commercialModel ? modelLabel(data.relationship.commercialModel) : '—',
+                },
+                { term: 'Arrangement starts', detail: formatDate(data.relationship.effectiveDate) },
+                { term: 'Arrangement ends', detail: formatDate(data.relationship.periodEnd) },
+                { term: 'Renewal date', detail: formatDate(data.relationship.renewalDate) },
                 {
                   term: 'Prepaid balance',
                   detail:
@@ -76,11 +98,21 @@ export default function Overview() {
                       ? `${formatTokens(data.relationship.prepaidBalanceTokens)} tokens`
                       : 'Not applicable',
                 },
+                { term: 'Enabled features', detail: data.featureCount ?? '—' },
               ]}
             />
           ) : (
-            <SectionUnavailable label="Relationship" />
+            <UnavailableState title="Operator Service unavailable" message="Organization and commercial details could not be loaded. Retry after the Operator Console is reachable. This page does not invent substitute figures." />
           )}
+          {operatorAvailable && data.relationship.lowBalance ? (
+            <p className="warning-banner" role="status">
+              Low prepaid balance: remaining tokens are at or below the warning threshold
+              {data.relationship.warningThresholdTokens != null
+                ? ` of ${formatTokens(data.relationship.warningThresholdTokens)}`
+                : ''}
+              .
+            </p>
+          ) : null}
         </Card>
 
         <Card title="Agents">
@@ -88,29 +120,29 @@ export default function Overview() {
             <DefList
               items={[
                 { term: 'Active agents', detail: data.agentSummary.active ?? '—' },
-                { term: 'Scheduled access', detail: data.agentSummary.scheduled ?? '—' },
+                { term: 'Scheduled access changes', detail: data.agentSummary.scheduled ?? '—' },
               ]}
             />
           ) : (
-            <SectionUnavailable label="Agents" />
+            <UnavailableState title="Operator Service unavailable" message="Agent counts are not available until the Operator Console responds." />
           )}
         </Card>
 
-        <Card title="Licenses & deployments">
+        <Card title="Licenses">
           {licenseAvailable ? (
             <DefList
               items={[
                 { term: 'Active licenses', detail: data.licenseSummary.activeLicenses ?? '—' },
-                { term: 'Active deployments', detail: data.licenseSummary.activeDeployments ?? '—' },
+                { term: 'Deployments', detail: data.licenseSummary.activeDeployments ?? '—' },
               ]}
             />
           ) : (
-            <SectionUnavailable label="Licenses" />
+            <UnavailableState title="License Service unavailable" message="License summary is not available until the License Service responds." />
           )}
         </Card>
 
         <Card
-          title="Requests"
+          title="Recent requests"
           actions={
             <Link to="/requests" className="text-link">
               View all
@@ -130,20 +162,10 @@ export default function Overview() {
               ))}
             </ul>
           ) : (
-            <EmptyState message="No requests yet." />
+            <EmptyState message="No customer-visible request activity yet." />
           )}
         </Card>
       </div>
-
-      <Card className="next-action-card">
-        <div>
-          <h2>{nextAction.label}</h2>
-          <p>{nextAction.detail}</p>
-        </div>
-        <LinkButton to={nextAction.to} variant="secondary">
-          {nextAction.label}
-        </LinkButton>
-      </Card>
     </Page>
   );
 }

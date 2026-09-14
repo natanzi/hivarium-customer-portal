@@ -369,7 +369,9 @@ export async function getRequestDetail(
 ): Promise<CustomerRequestDto | null> {
   const request = await getRequestById(db, customerId, requestId);
   if (!request) return null;
-  const events = await listRequestEvents(db, customerId, requestId);
+  const events = (await listRequestEvents(db, customerId, requestId)).filter(
+    (event) => event.eventType !== 'operator_note',
+  );
   return { ...request, events };
 }
 

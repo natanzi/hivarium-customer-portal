@@ -18,7 +18,8 @@ import {
 const STATUS_FILTERS: Array<{ value: RequestStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All statuses' },
   { value: 'submitted', label: 'Submitted' },
-  { value: 'in_review', label: 'In review' },
+  { value: 'in_review', label: 'Under review' },
+  { value: 'needs_information', label: 'Needs information' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'completed', label: 'Completed' },

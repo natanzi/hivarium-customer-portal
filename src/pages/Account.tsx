@@ -1,5 +1,5 @@
 import { useSession } from '../session';
-import { Card, DefList, LinkButton, LoadingState, OutboundLink, Page, UnavailableState } from '../components/ui';
+import { Card, DefList, LinkButton, LoadingState, OutboundLink, Page, StatusPill, UnavailableState } from '../components/ui';
 import { RoleBadge } from '../role-badge';
 import { REQUEST_TYPE_LABELS, type RequestType } from '../../shared/types';
 
@@ -37,19 +37,19 @@ export default function Account() {
 
   return (
     <Page eyebrow="Your account" title="Account">
-      <Card title="Authenticated user">
+      <Card title="Organization and identity">
         <DefList
           items={[
-            { term: 'Name', detail: session.user.displayName },
+            { term: 'Organization', detail: session.organization.name ?? 'Customer account' },
+            { term: 'Signed-in user', detail: session.user.displayName },
             { term: 'Email', detail: session.user.email },
             { term: 'Role', detail: <RoleBadge role={session.user.role} /> },
-            { term: 'Organization', detail: session.organization.name ?? 'Customer account' },
-            { term: 'Session', detail: 'Verified through Cloudflare Access' },
+            { term: 'Membership status', detail: <StatusPill status={session.membershipStatus} /> },
           ]}
         />
       </Card>
 
-      <Card title="Allowed capabilities">
+      <Card title="Allowed portal capabilities">
         <ul className="check-list">
           {capabilityLabels.length > 0 ? (
             capabilityLabels.map((label) => <li key={label}>{label}</li>)

@@ -788,6 +788,36 @@ describe('root behavior and static assets', () => {
     expect(response.status).toBe(404);
   });
 
+  it('derives overview customerId from the verified membership', async () => {
+    const acme = await jsonBody(await sessionRequest(app.app, app.env, adminToken(), '/api/v1/overview'));
+    expect((acme as { organization: { customerId: string } }).organization.customerId).toBe('acme-dev-001');
+    const globex = await jsonBody(await sessionRequest(app.app, app.env, globexToken(), '/api/v1/overview'));
+    expect((globex as { organization: { customerId: string } }).organization.customerId).toBe('globex-dev-002');
+  });
+
+  it('downloads a signed license for the verified customer and rejects cross-tenant ids as empty upstream', async () => {
+    const response = await sessionRequest(app.app, app.env, adminToken(), '/api/v1/licenses/lic-scan-2026/document');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(response.headers.get('content-disposition')).toContain('lic-scan-2026');
+    const globex = await sessionRequest(app.app, app.env, globexToken(), '/api/v1/licenses/lic-scan-2026/document');
+    expect(globex.status).toBe(404);
+  });
+
+  it('returns a customer-visible error when the signed document cannot be retrieved', async () => {
+    const broken = await createTestApp({
+      license: new MemoryLicenseService({ failWith: 'unreachable' }),
+    });
+    try {
+      const response = await sessionRequest(broken.app, broken.env, await broken.sign({ email: 'dev.admin@acme.example' }), '/api/v1/licenses/lic-scan-2026/document');
+      expect(response.status).toBe(503);
+      const body = await jsonBody(response);
+      expect(body.error).toBe('upstream_unavailable');
+    } finally {
+      await broken.close();
+    }
+  });
+
   it('serves health without auth', async () => {
     const ctx = createExecutionContext();
     const fetchHandler = worker.fetch!;

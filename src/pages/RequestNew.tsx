@@ -1,8 +1,8 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useSession } from '../session';
 import { apiFetchJson, ApiError, newIdempotencyKey } from '../api/client';
-import type { CustomerRequestDto, RequestPayloadMap, RequestType } from '../../shared/types';
+import type { CustomerRequestDto, RequestType } from '../../shared/types';
 import { REQUEST_TYPE_LABELS } from '../../shared/types';
 import { Button, Card, Page } from '../components/ui';
 
@@ -12,26 +12,40 @@ interface FormState {
   payload: Record<string, string>;
 }
 
-const TYPE_FIELDS: Record<
-  RequestType,
-  Array<{ key: string; label: string; type: 'text' | 'number' | 'select' | 'textarea'; required?: boolean; options?: string[]; placeholder?: string }>
+const TYPE_FIELDS: Partial<
+  Record<
+    RequestType,
+    Array<{
+      key: string;
+      label: string;
+      type: 'text' | 'number' | 'select' | 'textarea' | 'date';
+      required?: boolean;
+      options?: string[];
+      placeholder?: string;
+    }>
+  >
 > = {
   renewal: [
-    { key: 'desiredTerm', label: 'Desired term', type: 'select', options: ['monthly', 'annual'] },
-    { key: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Anything we should know about the renewal.' },
+    { key: 'licenseId', label: 'Selected license', type: 'text', required: true, placeholder: 'License ID' },
+    { key: 'desiredTerm', label: 'Requested duration', type: 'select', options: ['monthly', 'annual'] },
+    { key: 'notes', label: 'Renewal note', type: 'textarea', placeholder: 'Anything we should know about the renewal.' },
   ],
   capacity_increase: [
-    { key: 'capacityType', label: 'Capacity type', type: 'select', options: ['seats', 'agents'] },
-    { key: 'desiredCapacity', label: 'Desired capacity', type: 'number', required: true },
-    { key: 'notes', label: 'Notes', type: 'textarea' },
+    { key: 'currentPlan', label: 'Current plan', type: 'text' },
+    { key: 'requestedPlan', label: 'Requested plan or requirements', type: 'textarea', required: true },
+    { key: 'effectiveDatePreference', label: 'Effective-date preference', type: 'text', placeholder: 'e.g. start of next quarter' },
+    { key: 'notes', label: 'Note', type: 'textarea' },
   ],
   prepaid_credit: [
-    { key: 'amountTokens', label: 'Token amount', type: 'number', required: true },
-    { key: 'notes', label: 'Notes', type: 'textarea' },
+    { key: 'amountTokens', label: 'Requested token amount', type: 'number', required: true },
+    { key: 'notes', label: 'Reason', type: 'textarea', required: true },
+    { key: 'urgency', label: 'Urgency', type: 'select', options: ['low', 'normal', 'high'] },
   ],
   agent_access: [
-    { key: 'agentProductId', label: 'Agent product id', type: 'text', required: true, placeholder: 'e.g. agent-scan-001' },
-    { key: 'purpose', label: 'Purpose', type: 'textarea' },
+    { key: 'agentProductId', label: 'Requested agent', type: 'text', required: true, placeholder: 'e.g. agent-scan-001' },
+    { key: 'purpose', label: 'Intended use case', type: 'textarea', required: true },
+    { key: 'startDate', label: 'Requested start date', type: 'date' },
+    { key: 'notes', label: 'Note', type: 'textarea' },
   ],
   license_support: [
     { key: 'licenseId', label: 'License id (if known)', type: 'text' },
@@ -43,28 +57,53 @@ const TYPE_FIELDS: Record<
     { key: 'issueDescription', label: 'Describe the issue', type: 'textarea', required: true },
   ],
   general_support: [
-    { key: 'topic', label: 'Topic', type: 'text', placeholder: 'e.g. Billing question' },
+    { key: 'subject', label: 'Subject', type: 'text', required: true },
     { key: 'description', label: 'Description', type: 'textarea', required: true },
+    { key: 'severity', label: 'Severity', type: 'select', options: ['low', 'normal', 'high', 'urgent'] },
   ],
 };
 
 const NUMBER_KEYS = new Set(['desiredCapacity', 'amountTokens']);
+
+const QUERY_TYPE_ALIASES: Record<string, RequestType> = {
+  license_renewal: 'renewal',
+  plan_change: 'capacity_increase',
+  additional_agent_access: 'agent_access',
+  token_credit: 'prepaid_credit',
+  support: 'general_support',
+  renewal: 'renewal',
+  capacity_increase: 'capacity_increase',
+  agent_access: 'agent_access',
+  prepaid_credit: 'prepaid_credit',
+  general_support: 'general_support',
+  license_support: 'license_support',
+  deployment_support: 'deployment_support',
+};
 
 export default function RequestNew() {
   const sessionState = useSession();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const allowed = sessionState.status === 'ready' ? sessionState.session.capabilities.requestTypes : [];
-  const preselected = (searchParams.get('type') as RequestType | null) ?? null;
-  const initialType = preselected && allowed.includes(preselected) ? preselected : allowed[0] ?? null;
+  const rawType = searchParams.get('type');
+  const mappedType = rawType ? QUERY_TYPE_ALIASES[rawType] : null;
+  const preselected = mappedType && allowed.includes(mappedType) ? mappedType : null;
+  const initialType = preselected ?? allowed[0] ?? null;
+  const prefilled: Record<string, string> = {};
+  const license = searchParams.get('license');
+  const agent = searchParams.get('agent');
+  if (license) prefilled.licenseId = license;
+  if (agent) prefilled.agentProductId = agent;
 
   const [requestType, setRequestType] = useState<RequestType | null>(initialType);
-  const [form, setForm] = useState<FormState>({ title: '', reason: '', payload: {} });
+  const [form, setForm] = useState<FormState>({ title: '', reason: '', payload: prefilled });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const idempotencyKey = useRef(newIdempotencyKey());
 
-  const fields = requestType ? TYPE_FIELDS[requestType] : [];
+  const fields = requestType ? TYPE_FIELDS[requestType] ?? [] : [];
 
   const setField = (key: string, value: string) => {
     setForm((previous) => ({ ...previous, payload: { ...previous.payload, [key]: value } }));
@@ -78,7 +117,7 @@ export default function RequestNew() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!requestType) return;
+    if (!requestType || submitting) return;
 
     const errors: Record<string, string> = {};
     for (const field of fields) {
@@ -98,6 +137,7 @@ export default function RequestNew() {
       if (value === '') continue;
       payload[field.key] = NUMBER_KEYS.has(field.key) ? Number(value) : value;
     }
+    if (form.reason.trim()) payload.notes = payload.notes ?? form.reason.trim();
 
     setSubmitting(true);
     setSubmitError(null);
@@ -107,12 +147,13 @@ export default function RequestNew() {
         {
           requestType,
           title: form.title.trim() || undefined,
-          reason: form.reason.trim() || undefined,
-          payload,
-          idempotencyKey: newIdempotencyKey(),
+          reason: form.reason.trim() || (typeof payload.notes === 'string' ? payload.notes : undefined),
+      payload,
+      idempotencyKey: idempotencyKey.current,
         },
       );
-      navigate(`/requests/${result.request.id}`, { replace: true });
+      setCreatedId(result.request.id);
+      navigate(`/requests/${result.request.id}`, { replace: true, state: { justCreated: true } });
     } catch (error) {
       if (error instanceof ApiError) {
         setSubmitError(error.message);
@@ -125,8 +166,7 @@ export default function RequestNew() {
 
   const payloadSummary = useMemo(() => {
     if (!requestType) return null;
-    const payload = form.payload;
-    const meaningful = Object.entries(payload)
+    const meaningful = Object.entries(form.payload)
       .filter(([, value]) => value.trim() !== '')
       .map(([key, value]) => `${key}: ${value}`);
     return meaningful.length > 0 ? meaningful.join(' · ') : 'No additional details.';
@@ -148,6 +188,11 @@ export default function RequestNew() {
       title="New request"
       description="Describe what you need. Hivarium operators review every request before anything changes — nothing happens automatically."
     >
+      {createdId ? (
+        <p className="hint-text" role="status">
+          Request {createdId} submitted.
+        </p>
+      ) : null}
       <form onSubmit={submit} noValidate>
         <Card title="Request details">
           <div className="form-field">
@@ -159,6 +204,7 @@ export default function RequestNew() {
                 setRequestType(event.target.value as RequestType);
                 setForm({ title: '', reason: '', payload: {} });
                 setFieldErrors({});
+                idempotencyKey.current = newIdempotencyKey();
               }}
             >
               {allowed.map((type) => (
@@ -226,7 +272,7 @@ export default function RequestNew() {
           ))}
 
           <div className="form-field">
-            <label htmlFor="request-reason">Reason (optional)</label>
+            <label htmlFor="request-reason">Business reason (optional)</label>
             <textarea
               id="request-reason"
               value={form.reason}

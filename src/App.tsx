@@ -6,6 +6,7 @@ import Overview from './pages/Overview';
 import Subscription from './pages/Subscription';
 import Agents from './pages/Agents';
 import Licenses from './pages/Licenses';
+import LicenseDetail from './pages/LicenseDetail';
 import Usage from './pages/Usage';
 import Requests from './pages/Requests';
 import RequestNew from './pages/RequestNew';
@@ -42,6 +43,7 @@ function Gate() {
           <Route path="/subscription" element={<Subscription />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/licenses" element={<Licenses />} />
+          <Route path="/licenses/:licenseId" element={<LicenseDetail />} />
           <Route path="/usage" element={<Usage />} />
           <Route path="/requests" element={<Requests />} />
           <Route path="/requests/new" element={<RequestNew />} />

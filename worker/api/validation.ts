@@ -100,7 +100,8 @@ function validatePayload(requestType: RequestType, payload: unknown): Validation
 
   switch (requestType) {
     case 'renewal': {
-      assertOnlyKeys(payload, ['desiredTerm', 'notes'], problems);
+      assertOnlyKeys(payload, ['licenseId', 'desiredTerm', 'notes'], problems);
+      if (!isOptionalString(payload.licenseId, 128)) problems.push('licenseId must be at most 128 characters.');
       if (payload.desiredTerm !== undefined && payload.desiredTerm !== 'monthly' && payload.desiredTerm !== 'annual') {
         problems.push('desiredTerm must be "monthly" or "annual".');
       }
@@ -108,30 +109,40 @@ function validatePayload(requestType: RequestType, payload: unknown): Validation
       break;
     }
     case 'capacity_increase': {
-      assertOnlyKeys(payload, ['capacityType', 'desiredCapacity', 'notes'], problems);
+      assertOnlyKeys(payload, ['capacityType', 'desiredCapacity', 'currentPlan', 'requestedPlan', 'effectiveDatePreference', 'notes'], problems);
       if (payload.capacityType !== undefined && payload.capacityType !== 'seats' && payload.capacityType !== 'agents') {
         problems.push('capacityType must be "seats" or "agents".');
       }
-      if (!isPositiveInt(payload.desiredCapacity, 100_000)) {
+      if (payload.desiredCapacity !== undefined && !isPositiveInt(payload.desiredCapacity, 100_000)) {
         problems.push('desiredCapacity must be an integer between 1 and 100000.');
       }
+      if (payload.desiredCapacity === undefined && payload.requestedPlan === undefined) {
+        problems.push('desiredCapacity must be an integer between 1 and 100000.');
+      }
+      if (!isOptionalString(payload.currentPlan, 200)) problems.push('currentPlan must be at most 200 characters.');
+      if (!isOptionalString(payload.requestedPlan, 1000)) problems.push('requestedPlan must be at most 1000 characters.');
+      if (!isOptionalString(payload.effectiveDatePreference, 64)) problems.push('effectiveDatePreference must be at most 64 characters.');
       if (!isOptionalString(payload.notes, 1000)) problems.push('notes must be at most 1000 characters.');
       break;
     }
     case 'prepaid_credit': {
-      assertOnlyKeys(payload, ['amountTokens', 'notes'], problems);
+      assertOnlyKeys(payload, ['amountTokens', 'notes', 'urgency'], problems);
       if (!isPositiveInt(payload.amountTokens, 1_000_000)) {
         problems.push('amountTokens must be an integer between 1 and 1000000.');
       }
       if (!isOptionalString(payload.notes, 1000)) problems.push('notes must be at most 1000 characters.');
+      if (payload.urgency !== undefined && payload.urgency !== 'low' && payload.urgency !== 'normal' && payload.urgency !== 'high') {
+        problems.push('urgency must be "low", "normal", or "high".');
+      }
       break;
     }
     case 'agent_access': {
-      assertOnlyKeys(payload, ['agentProductId', 'purpose', 'notes'], problems);
+      assertOnlyKeys(payload, ['agentProductId', 'purpose', 'startDate', 'notes'], problems);
       if (!isString(payload.agentProductId, 128)) {
         problems.push('agentProductId is required and must be at most 128 characters.');
       }
       if (!isOptionalString(payload.purpose, 1000)) problems.push('purpose must be at most 1000 characters.');
+      if (!isOptionalString(payload.startDate, 32)) problems.push('startDate must be at most 32 characters.');
       if (!isOptionalString(payload.notes, 1000)) problems.push('notes must be at most 1000 characters.');
       break;
     }
@@ -155,12 +166,22 @@ function validatePayload(requestType: RequestType, payload: unknown): Validation
       break;
     }
     case 'general_support': {
-      assertOnlyKeys(payload, ['topic', 'description', 'notes'], problems);
+      assertOnlyKeys(payload, ['topic', 'subject', 'description', 'notes', 'severity'], problems);
       if (!isOptionalString(payload.topic, 120)) problems.push('topic must be at most 120 characters.');
+      if (!isOptionalString(payload.subject, 120)) problems.push('subject must be at most 120 characters.');
       if (!isString(payload.description, MAX_STRING_LENGTH)) {
         problems.push('description is required and must be at most 2000 characters.');
       }
       if (!isOptionalString(payload.notes, 1000)) problems.push('notes must be at most 1000 characters.');
+      if (
+        payload.severity !== undefined &&
+        payload.severity !== 'low' &&
+        payload.severity !== 'normal' &&
+        payload.severity !== 'high' &&
+        payload.severity !== 'urgent'
+      ) {
+        problems.push('severity must be "low", "normal", "high", or "urgent".');
+      }
       break;
     }
   }

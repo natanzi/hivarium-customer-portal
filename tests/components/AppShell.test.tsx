@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import AppShell from '../../src/components/AppShell';
@@ -10,6 +10,7 @@ const session: SessionAccountStatus = {
   user: { membershipId: 'mbr-acme-admin-001', email: 'dev.admin@acme.example', displayName: 'Dev Admin', role: 'customer_admin' },
   organization: { customerId: 'acme-dev-001', name: 'Acme Instruments' },
   capabilities: { requestTypes: ['renewal', 'agent_access'], canCancel: true, canComment: true },
+  membershipStatus: 'active',
   signOutUrl: '/cdn-cgi/access/logout',
 };
 
@@ -27,9 +28,11 @@ describe('AppShell', () => {
   it('renders the organization identity and primary navigation', () => {
     renderShell();
     expect(screen.getByRole('link', { name: /Hivarium Customer Portal home/ })).toBeInTheDocument();
-    for (const label of ['Overview', 'Subscription', 'Agents', 'Licenses & deployments', 'Usage', 'Requests', 'Account']) {
+    for (const label of ['Overview', 'Agents', 'Licenses', 'Requests', 'Account']) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
+    expect(screen.queryByRole('link', { name: 'Subscription' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/checkout|payment|credit card/i)).not.toBeInTheDocument();
     expect(screen.getByText('Acme Instruments')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Sign out' })).toHaveAttribute('href', '/cdn-cgi/access/logout');
   });
@@ -60,7 +63,7 @@ describe('AppShell', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('closes the drawer with Escape and restores focus', async () => {
+  it('closes the drawer with Escape and restores focus to the menu trigger', async () => {
     const user = userEvent.setup();
     renderShell();
     const menuButton = screen.getByRole('button', { name: 'Open navigation menu' });
@@ -68,6 +71,7 @@ describe('AppShell', () => {
     await screen.findByRole('dialog');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(menuButton).toHaveFocus();
   });
 
   it('closes the drawer when navigating from it', async () => {
@@ -96,9 +100,20 @@ describe('AppShell', () => {
     expect(overview).toHaveClass('active');
   });
 
-  it('sign-out is a real link to the Access logout endpoint', () => {
-    renderShell();
-    expect(screen.getByRole('link', { name: 'Sign out' }).getAttribute('href')).toBe('/cdn-cgi/access/logout');
-    expect(fireEvent.click(screen.getByRole('link', { name: 'Sign out' }))).toBe(true);
+  it('sign-out is a real Access logout link and is not clicked in jsdom', () => {
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+      original.apply(console, args as []);
+    };
+    try {
+      renderShell();
+      const link = screen.getByRole('link', { name: 'Sign out' });
+      expect(link.getAttribute('href')).toBe('/cdn-cgi/access/logout');
+      expect(errors.some((entry) => String(entry).includes('Not implemented: navigation'))).toBe(false);
+    } finally {
+      console.error = original;
+    }
   });
 });
