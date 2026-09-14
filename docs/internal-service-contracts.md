@@ -111,14 +111,11 @@ The portal renders only the fields above.
    present. Until the console accepts a service credential (service token or
    shared secret header), production `OPERATOR_SERVICE` calls will be
    rejected and portal sections will show unavailable.
-2. **Operator decisions → portal request status sync.** `customer_requests`
-   statuses beyond `submitted`/`cancelled` (`in_review`, `approved`,
-   `rejected`, `completed`) are recorded by operators in the Operator
-   Console. There is no inbound sync endpoint yet. Expected contract:
-   `POST /api/internal/portal/requests/:id/status` on the portal (or an
-   equivalent push from the console) carrying `{ status, actor, occurredAt }`,
-   which the portal applies as a `status_changed` append-only event. Until
-   then the portal only transitions requests itself (create, cancel).
+2. **Operator decisions → portal request status.** Implemented as
+   `/service/v1/*` on this Worker (see `docs/operator-request-service.md`).
+   The Operator Console authenticates with `Authorization: Bearer` matching
+   `OPERATOR_CALLER_TOKEN` (`PORTAL_SERVICE_TOKEN` on the console). Customer
+   JWTs and machine credentials cannot call these routes.
 3. **License Service license read endpoint.** See the License Service section
    above; the Licenses page shows unavailable until it lands.
 4. **Machine credential issuance.** `api_clients` rows exist and the machine

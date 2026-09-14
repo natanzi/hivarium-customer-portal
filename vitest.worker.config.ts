@@ -26,7 +26,7 @@ export default defineConfig(async () => {
     ],
     test: {
       include: ['tests/worker/**/*.test.ts'],
-      exclude: ['tests/worker/access-jwt.test.ts', 'tests/worker/adapters.test.ts'],
+      exclude: ['tests/worker/access-jwt.test.ts', 'tests/worker/adapters.test.ts', 'tests/worker/request-lifecycle.test.ts'],
       setupFiles: ['./tests/worker/apply-migrations.ts'],
       testTimeout: 30_000,
     },

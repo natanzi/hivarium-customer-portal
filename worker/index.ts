@@ -15,6 +15,7 @@
 
 import type { Capabilities, PortalRole } from '../shared/types';
 import { resolveIdentity, type IdentityDeps } from './auth/context';
+import { resolveOperatorServicePrincipal } from './auth/service-principal';
 import { type KeyProvider } from './auth/access-jwt';
 import { FetchOperatorService, type OperatorPort } from './services/operator';
 import { FetchLicenseService, type LicensePort } from './services/license';
@@ -33,6 +34,11 @@ import {
   handleUsage,
   type HandlerContext,
 } from './api/handlers';
+import {
+  handleOperatorDecision,
+  handleOperatorGetRequest,
+  handleOperatorListRequests,
+} from './api/operator-handlers';
 import { InMemoryRateLimiter, MACHINE_RATE_LIMIT, MACHINE_RATE_WINDOW_MS } from './api/rate-limit';
 import { newCorrelationId } from './util';
 
@@ -152,6 +158,41 @@ async function readJsonBody(request: Request): Promise<unknown> {
     return JSON.parse(text);
   } catch {
     throw new ApiError(400, 'validation_error', 'Request body is not valid JSON.');
+  }
+}
+
+async function handleServiceApi(request: Request, env: PortalEnv, url: URL): Promise<Response> {
+  const requestId = newCorrelationId();
+  const auth = await resolveOperatorServicePrincipal(request, env.OPERATOR_CALLER_TOKEN);
+  if (!auth.ok) {
+    if (auth.failure.kind === 'missing_config') {
+      return json(errorEnvelope('service_unavailable', 'Service authentication is not configured. Please try again later.', requestId), 503, { 'x-request-id': requestId });
+    }
+    return json(errorEnvelope('unauthorized', 'Invalid credentials.', requestId), 401, { 'x-request-id': requestId });
+  }
+
+  const segments = url.pathname.split('/').filter(Boolean);
+  try {
+    if (segments[0] !== 'service' || segments[1] !== 'v1') {
+      return json(errorEnvelope('not_found', 'Unknown service route.', requestId), 404, { 'x-request-id': requestId });
+    }
+    if (segments[2] === 'requests' && segments.length === 3 && request.method === 'GET') {
+      const body = await handleOperatorListRequests(env.PORTAL_DB, url.searchParams);
+      return json(body, 200, { 'x-request-id': requestId });
+    }
+    if (segments[2] === 'requests' && segments.length === 4 && request.method === 'GET') {
+      const body = await handleOperatorGetRequest(env.PORTAL_DB, segments[3]);
+      return json(body, 200, { 'x-request-id': requestId });
+    }
+    if (segments[2] === 'requests' && segments.length === 5 && segments[4] === 'decision' && request.method === 'POST') {
+      const payload = await readJsonBody(request);
+      const body = await handleOperatorDecision(env.PORTAL_DB, segments[3], payload, auth.principal, requestId);
+      return json(body, 200, { 'x-request-id': requestId });
+    }
+    return json(errorEnvelope('not_found', 'Unknown service route.', requestId), 404, { 'x-request-id': requestId });
+  } catch (error) {
+    if (error instanceof ApiError) return errorResponse(error, requestId);
+    return json(errorEnvelope('internal_error', 'An unexpected error occurred.', requestId), 500, { 'x-request-id': requestId });
   }
 }
 
@@ -301,6 +342,10 @@ export function createApp(extensions: AppExtensions = {}): ExportedHandler<Porta
       // app never stalls on a client-side redirect hop.
       if (request.method === 'GET' && url.pathname === '/' && wantsHtml(request)) {
         return Response.redirect(new URL('/overview', request.url).toString(), 307);
+      }
+
+      if (url.pathname.startsWith('/service/')) {
+        return handleServiceApi(request, env, url);
       }
 
       if (url.pathname.startsWith('/api/')) {

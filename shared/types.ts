@@ -42,6 +42,7 @@ export type RequestType =
 export type RequestStatus =
   | 'submitted'
   | 'in_review'
+  | 'needs_information'
   | 'approved'
   | 'rejected'
   | 'completed'

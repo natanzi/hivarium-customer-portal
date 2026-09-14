@@ -18,6 +18,7 @@ import type {
 } from '../../../shared/types';
 import { REQUEST_TYPE_LABELS } from '../../../shared/types';
 import { canonicalJson, isoNow, newId, parseJsonObject, sha256Hex } from '../../util';
+import { canCustomerCancel, canCustomerResubmit } from '../../domain/request-lifecycle';
 
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -84,8 +85,26 @@ function mapRequest(row: RequestDbRow): Omit<CustomerRequestDto, 'requestedBy'> 
   };
 }
 
+const CUSTOMER_HIDDEN_METADATA_KEYS = [
+  'operatorNote',
+  'principalType',
+  'principalIdentifier',
+  'idempotencyKeyHash',
+  'externalReference',
+  'serviceName',
+] as const;
+
+function publicEventMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if ((CUSTOMER_HIDDEN_METADATA_KEYS as readonly string[]).includes(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 function mapEvent(row: EventDbRow): RequestEventDto {
-  const metadata = parseJsonObject(row.metadata_json) ?? {};
+  const metadata = publicEventMetadata(parseJsonObject(row.metadata_json) ?? {});
   const actorType = row.actor_type as 'customer' | 'operator' | 'system';
   let actorLabel: string;
   if (actorType === 'customer') {
@@ -422,7 +441,7 @@ export async function cancelRequest(
     .bind(input.requestId, input.customerId)
     .first<{ id: string; status: string }>();
   if (!request) return 'not_found';
-  if (request.status !== 'submitted') return 'invalid_transition';
+  if (!canCustomerCancel(request.status as RequestStatus)) return 'invalid_transition';
 
   const results = await db.batch([
     db
@@ -490,7 +509,8 @@ export async function addCustomerComment(
   if (!request) return 'not_found';
   if (request.status === 'cancelled') return 'invalid_transition';
 
-  await db.batch([
+  const resubmit = canCustomerResubmit(request.status as RequestStatus);
+  const statements = [
     db
       .prepare(
         `INSERT INTO customer_request_events
@@ -507,6 +527,40 @@ export async function addCustomerComment(
         '{}',
         now,
       ),
+  ];
+  if (resubmit) {
+    statements.push(
+      db
+        .prepare(
+          `UPDATE customer_requests
+           SET status = 'in_review', updated_at = ?1
+           WHERE id = ?2 AND customer_id = ?3 AND status = 'needs_information'`,
+        )
+        .bind(now, input.requestId, input.customerId),
+      db
+        .prepare(
+          `INSERT INTO customer_request_events
+            (id, request_id, customer_id, event_type, actor_type, actor_reference, message, metadata_json, created_at)
+           VALUES (?1, ?2, ?3, 'status_changed', ?4, ?5, ?6, ?7, ?8)`,
+        )
+        .bind(
+          newId('evt'),
+          input.requestId,
+          input.customerId,
+          actorTypeFor(input.actor),
+          input.actor.membershipId,
+          'Request resubmitted for review.',
+          JSON.stringify({
+            previousStatus: 'needs_information',
+            resultingStatus: 'in_review',
+            principalType: 'customer',
+            principalIdentifier: input.actor.membershipId,
+          }),
+          now,
+        ),
+    );
+  }
+  statements.push(
     db
       .prepare(
         `INSERT INTO portal_audit_log
@@ -518,11 +572,13 @@ export async function addCustomerComment(
         input.customerId,
         input.actor.email,
         input.requestId,
-        JSON.stringify({ via: input.actor.label }),
+        JSON.stringify({ via: input.actor.label, resubmitted: resubmit }),
         input.correlationId,
         now,
       ),
-  ]);
+  );
+
+  await db.batch(statements);
   return 'added';
 }
 

@@ -16,6 +16,13 @@ every API request:
   header is matched by SHA-256 hash against `api_clients`. The raw credential
   is never stored or logged. Status must be `active` and the credential must
   not be expired.
+- **Operator Console service principal**: inbound `/service/v1/*` calls
+  present `Authorization: Bearer` matching the `OPERATOR_CALLER_TOKEN` secret
+  (equal to the console's `PORTAL_SERVICE_TOKEN`). Comparison is timing-safe
+  via SHA-256 digests. `X-Service-Name` is not trusted. The verified
+  principal is `{ principalType: "service", serviceName: "operator-console" }`.
+  Session JWTs and machine credentials cannot authorize these routes. Missing
+  `OPERATOR_CALLER_TOKEN` fails closed (`503`).
 - **Fail closed**: if `ACCESS_TEAM_DOMAIN` or `ACCESS_AUD` is missing, every
   `/api/v1/*` request returns `503 service_unavailable`. A missing, malformed,
   badly signed, expired, wrong-issuer or wrong-audience token returns `401
@@ -82,9 +89,10 @@ protected by Cloudflare Access at the edge.
 - No secrets in the frontend bundle: the SPA only talks to same-origin API
   endpoints and never receives tokens, hashes or signing material.
 - `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ACCESS_CERTS_URL`,
-  `OPERATOR_SERVICE_URL`, `LICENSE_SERVICE_URL` are secrets / local-only
-  vars. `wrangler.jsonc` holds no secrets; `.dev.vars.example` holds
-  placeholders only.
+  `OPERATOR_SERVICE_URL`, `LICENSE_SERVICE_URL`, `OPERATOR_SERVICE_TOKEN`,
+  `LICENSE_SERVICE_TOKEN`, and `OPERATOR_CALLER_TOKEN` are secrets /
+  local-only vars. `wrangler.jsonc` holds no secrets; `.dev.vars.example`
+  holds placeholders only.
 - Credentials for machine clients are stored hashed (SHA-256) with a
   non-secret display prefix.
 - No raw credentials are ever logged; audit entries record actor emails or

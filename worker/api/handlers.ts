@@ -144,7 +144,7 @@ export async function handleOverview(ctx: HandlerContext): Promise<OverviewData>
       activeDeployments,
     },
     requests: {
-      outstanding: requestPage.requests.filter((r) => ['submitted', 'in_review'].includes(r.status)).length +
+      outstanding: requestPage.requests.filter((r) => ['submitted', 'in_review', 'needs_information'].includes(r.status)).length +
         Math.max(0, requestPage.total - requestPage.requests.length),
       recent,
     },
@@ -250,7 +250,7 @@ function requireScope(identity: PortalIdentity, scope: string): void {
   }
 }
 
-const ALL_REQUEST_STATUSES: RequestStatus[] = ['submitted', 'in_review', 'approved', 'rejected', 'completed', 'cancelled'];
+const ALL_REQUEST_STATUSES: RequestStatus[] = ['submitted', 'in_review', 'needs_information', 'approved', 'rejected', 'completed', 'cancelled'];
 
 export async function handleListRequests(
   ctx: HandlerContext,

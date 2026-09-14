@@ -48,6 +48,10 @@ export interface TestAppOptions {
   rateLimiter?: InMemoryRateLimiter;
   /** Omit ACCESS_TEAM_DOMAIN/ACCESS_AUD to simulate missing production config. */
   missingAuthConfig?: boolean;
+  /** Inbound Operator Console caller token. Omitted unless set. */
+  operatorCallerToken?: string;
+  /** Simulate missing OPERATOR_CALLER_TOKEN. */
+  missingOperatorCallerToken?: boolean;
 }
 
 export async function createTestApp(options: TestAppOptions = {}): Promise<TestApp> {
@@ -72,6 +76,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     ACCESS_AUD: options.missingAuthConfig ? undefined : (options.audience ?? workerEnv.ACCESS_AUD ?? TEST_AUDIENCE),
     OPERATOR_SERVICE: workerEnv.OPERATOR_SERVICE,
     LICENSE_SERVICE: workerEnv.LICENSE_SERVICE,
+    OPERATOR_CALLER_TOKEN: options.missingOperatorCallerToken
+      ? undefined
+      : options.operatorCallerToken,
   };
 
   return {
@@ -105,6 +112,18 @@ export function machineRequest(
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${credential}`);
+  return appFetch(app)(new Request(`https://portal.test${path}`, { ...init, headers }), env);
+}
+
+export function serviceRequest(
+  app: ReturnType<typeof createApp>,
+  env: PortalEnv,
+  token: string | null,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (token !== null) headers.set('Authorization', `Bearer ${token}`);
   return appFetch(app)(new Request(`https://portal.test${path}`, { ...init, headers }), env);
 }
 

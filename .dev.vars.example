@@ -20,4 +20,13 @@ ACCESS_AUD="00000000-0000-0000-0000-000000000000"
 # running `wrangler dev` against local stub services. Never set in production;
 # production uses the OPERATOR_SERVICE / LICENSE_SERVICE service bindings.
 # OPERATOR_SERVICE_URL="http://127.0.0.1:8789/operator"
-# LICENSE_SERVICE_URL="http://127.0.0.1:8789/license"# Outbound service authentication\n# OPERATOR_SERVICE_TOKEN="placeholder"\n# LICENSE_SERVICE_TOKEN="placeholder"\n# Inbound service authentication\n# OPERATOR_CALLER_TOKEN="placeholder"
+# LICENSE_SERVICE_URL="http://127.0.0.1:8789/license"
+
+# Outbound service authentication (portal → Operator Console / License Service).
+# Placeholders only. Production values are Cloudflare secrets.
+# OPERATOR_SERVICE_TOKEN="placeholder"
+# LICENSE_SERVICE_TOKEN="placeholder"
+
+# Inbound service authentication (Operator Console → portal).
+# Must match the Operator Console PORTAL_SERVICE_TOKEN secret.
+# OPERATOR_CALLER_TOKEN="placeholder"
