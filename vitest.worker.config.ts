@@ -14,6 +14,10 @@ export default defineConfig(async () => {
           configPath: './wrangler.jsonc',
         },
         miniflare: {
+          serviceBindings: {
+            OPERATOR_SERVICE: () => new Response('Test operator service unavailable.', { status: 503 }),
+            LICENSE_SERVICE: () => new Response('Test license service unavailable.', { status: 503 }),
+          },
           bindings: {
             TEST_MIGRATIONS: migrations,
             TEST_SEED_SQL: seedSql,
