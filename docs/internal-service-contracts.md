@@ -82,22 +82,25 @@ section shows unavailable.
 
 Expected service: the Hivarium License Service Worker.
 
-Current status: **not implemented**. The License Service currently exposes
-only `GET /health`; there is no license read endpoint.
+Current status: **implemented** on the License Service customer-scoped
+`/service/v1/customers/:customerId/licenses*` routes. Missing bindings still
+fail closed.
 
 | Portal port method     | Expected upstream endpoint                            | Status |
 | ---------------------- | ----------------------------------------------------- | ------ |
-| `getLicenses(customerId)` | `GET /api/v1/licenses?customerId=:id`               | not implemented |
+| `getLicenses(customerId)` | `GET /service/v1/customers/:customerId/licenses` | implemented |
+| `getLicense(customerId, licenseId)` | `GET /service/v1/customers/:customerId/licenses/:licenseId` | implemented |
+| `downloadLicenseDocument(...)` | `GET /service/v1/customers/:customerId/licenses/:licenseId/document` | implemented |
 
 ### Expected response shape
 
-`GET /api/v1/licenses?customerId=...` → `{ customerId, licenses: [...] }`
-where each license carries:
-`id, licenseType/type, status (active|expired|revoked|pending), issuedAt,
-expiresAt, permittedAgentProducts[], deployments[]`
-and each deployment carries:
-`id, environment, mode (online|offline|bare_metal), lastValidatedAt,
-heartbeatAt, activationCount, activationLimit`
+`GET /service/v1/customers/:id/licenses` → `{ data: [...], meta }`
+where each item carries:
+`licenseId, customerId, productId, status, validFrom, validUntil,
+deploymentType, limits`. The portal maps that envelope onto `{ customerId, licenses }`
+for the UI (`id` ← `licenseId`, `product` ← `productId`, `issuedAt` ← `validFrom`,
+`expiresAt` ← `validUntil`). Document responses are `{ jwsCompact }` with
+`Content-Disposition: attachment`.
 
 Security requirement: this endpoint must never expose signing secrets,
 internal license payload secrets, operator notes, or data for other tenants.
@@ -116,8 +119,9 @@ The portal renders only the fields above.
    The Operator Console authenticates with `Authorization: Bearer` matching
    `OPERATOR_CALLER_TOKEN` (`PORTAL_SERVICE_TOKEN` on the console). Customer
    JWTs and machine credentials cannot call these routes.
-3. **License Service license read endpoint.** See the License Service section
-   above; the Licenses page shows unavailable until it lands.
+3. **License Service license read endpoint.** Implemented as
+   `/service/v1/customers/:customerId/licenses*`. The portal authenticates with
+   `LICENSE_SERVICE_TOKEN` (License Service `PORTAL_CALLER_TOKEN`).
 4. **Machine credential issuance.** `api_clients` rows exist and the machine
    API authenticates against them, but no issuance endpoint exists in the
    portal (deliberate; see `docs/machine-api.md`). Operators create rows via

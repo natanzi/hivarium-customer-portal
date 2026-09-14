@@ -122,4 +122,33 @@ describe('FetchLicenseService', () => {
     expect(res.ok).toBe(false);
     expect((res as any).error.code).toBe('unreachable');
   });
+
+  it('maps License Service { data } list envelopes onto LicenseState', async () => {
+    const binding = {
+      fetch: async () => new Response(JSON.stringify({
+        data: [{
+          licenseId: 'lic_1',
+          customerId: 'cust-123',
+          productId: 'hivarium-core',
+          status: 'active',
+          validFrom: '2026-01-01T00:00:00.000Z',
+          validUntil: '2027-01-01T00:00:00.000Z',
+          deploymentType: 'self-hosted',
+          limits: { maxSeats: 10 },
+        }],
+        meta: { correlationId: 'c1' },
+      })),
+    } as any;
+    const ls = new FetchLicenseService({ binding, token: 'lic-token' });
+    const res = await ls.getLicenses('cust-123');
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error('not ok');
+    expect(res.value.customerId).toBe('cust-123');
+    expect(res.value.licenses[0]).toMatchObject({
+      id: 'lic_1',
+      product: 'hivarium-core',
+      issuedAt: '2026-01-01T00:00:00.000Z',
+      expiresAt: '2027-01-01T00:00:00.000Z',
+    });
+  });
 });

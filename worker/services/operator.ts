@@ -23,6 +23,7 @@ import type {
   LicenseState,
   UsageSummary,
   AgentAccessGrant,
+  LicenseRecord,
 } from '../../shared/types';
 
 export interface PortalView {
@@ -436,43 +437,58 @@ function validateActivity(value: unknown): { ok: true; value: unknown } | { ok: 
   return { ok: true, value: events.filter(Boolean) };
 }
 
-function validateLicenseState(value: unknown): { ok: true; value: unknown } | { ok: false; detail: string } {
-  const record = asRecord(value);
-  const raw = asArray(record?.licenses);
-  if (!raw) return { ok: false, detail: 'missing licenses array' };
-  const licenses = raw.map((entry) => {
-    const l = asRecord(entry);
-    if (!l) return null;
-    const deployments = (asArray(l.deployments) ?? []).map((dep) => {
-      const d = asRecord(dep);
-      if (!d) return null;
-      return {
-        id: asString(d.id) ?? '',
-        environment: asString(d.environment) ?? 'production',
-        mode: (asString(d.mode) ?? 'online') as 'online' | 'offline' | 'bare_metal',
-        lastValidatedAt: asString(d.lastValidatedAt) ?? asString(d.last_validated_at) ?? null,
-        heartbeatAt: asString(d.heartbeatAt) ?? asString(d.heartbeat_at) ?? null,
-        activationCount: asNumber(d.activationCount) ?? 0,
-        activationLimit: asNumber(d.activationLimit) ?? null,
-      };
-    });
+function mapLicenseStatus(value: string | null): LicenseRecord['status'] {
+  if (value === 'draft') return 'pending';
+  if (value === 'superseded') return 'expired';
+  if (value === 'active' || value === 'expired' || value === 'revoked' || value === 'pending' || value === 'suspended') {
+    return value;
+  }
+  return 'active';
+}
+
+function mapLicenseRecord(entry: unknown): LicenseRecord | null {
+  const l = asRecord(entry);
+  if (!l) return null;
+  const deployments = (asArray(l.deployments) ?? []).map((dep) => {
+    const d = asRecord(dep);
+    if (!d) return null;
+    const modeRaw = asString(d.mode) ?? asString(d.deploymentType);
+    const mode = modeRaw === 'offline' || modeRaw === 'air-gapped' || modeRaw === 'bare_metal'
+      ? (modeRaw === 'air-gapped' ? 'offline' : modeRaw)
+      : 'online';
     return {
-      id: asString(l.id) ?? '',
-      licenseType: asString(l.licenseType) ?? asString(l.type) ?? 'license',
-      status: (asString(l.status) ?? 'active') as 'active' | 'expired' | 'revoked' | 'pending' | 'suspended',
-      issuedAt: asString(l.issuedAt) ?? asString(l.issued_at) ?? '',
-      expiresAt: asString(l.expiresAt) ?? asString(l.expires_at) ?? '',
-      product: asString(l.product) ?? asString(l.productName) ?? undefined,
-      revision: asString(l.revision) ?? undefined,
-      permittedAgentProducts: (asArray(l.permittedAgentProducts) ?? []).map((p) => asString(p)).filter((p): p is string => p !== null),
-      deployments: deployments.filter(Boolean),
+      id: asString(d.id) ?? '',
+      environment: asString(d.environment) ?? 'production',
+      mode: mode as 'online' | 'offline' | 'bare_metal',
+      lastValidatedAt: asString(d.lastValidatedAt) ?? asString(d.last_validated_at) ?? null,
+      heartbeatAt: asString(d.heartbeatAt) ?? asString(d.heartbeat_at) ?? null,
+      activationCount: asNumber(d.activationCount) ?? 0,
+      activationLimit: asNumber(d.activationLimit) ?? null,
     };
   });
   return {
+    id: asString(l.id) ?? asString(l.licenseId) ?? '',
+    licenseType: asString(l.licenseType) ?? asString(l.type) ?? 'license',
+    status: mapLicenseStatus(asString(l.status)),
+    issuedAt: asString(l.issuedAt) ?? asString(l.issued_at) ?? asString(l.validFrom) ?? '',
+    expiresAt: asString(l.expiresAt) ?? asString(l.expires_at) ?? asString(l.validUntil) ?? '',
+    product: asString(l.product) ?? asString(l.productId) ?? asString(l.productName) ?? undefined,
+    revision: asString(l.revision) ?? undefined,
+    permittedAgentProducts: (asArray(l.permittedAgentProducts) ?? []).map((p) => asString(p)).filter((p): p is string => p !== null),
+    deployments: deployments.filter((d): d is NonNullable<typeof d> => d !== null),
+  };
+}
+
+function validateLicenseState(value: unknown): { ok: true; value: unknown } | { ok: false; detail: string } {
+  const record = asRecord(value);
+  const raw = asArray(record?.licenses) ?? asArray(record?.data);
+  if (!raw) return { ok: false, detail: 'missing licenses array' };
+  const licenses = raw.map(mapLicenseRecord).filter(Boolean);
+  return {
     ok: true,
     value: {
-      customerId: asString(record?.customerId) ?? '',
-      licenses: licenses.filter(Boolean),
+      customerId: asString(record?.customerId) ?? asString(asRecord(raw[0])?.customerId) ?? '',
+      licenses,
     },
   };
 }

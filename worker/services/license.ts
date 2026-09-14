@@ -1,15 +1,10 @@
 /**
  * LicenseService port.
  *
- * The License Service is authoritative for signed license documents,
- * activations, expirations and revocations. The portal reads only the
- * customer-authorized subset through this port and never exposes signing
+ * The License Service is authoritative for signed license documents.
+ * The portal reads the customer-authorized subset through
+ * `/service/v1/customers/:customerId/licenses*` and never exposes signing
  * secrets, internal license payload secrets, or operator-only notes.
- *
- * The License Service does not yet expose any license read endpoint (only
- * `/health` exists), so every method currently fails closed with
- * `not_implemented` when the binding exists, or `missing_binding` when it
- * does not. See docs/internal-service-contracts.md for the expected contract.
  */
 
 import type { LicenseState, LicenseRecord } from '../../shared/types';
@@ -45,14 +40,9 @@ export class FetchLicenseService implements LicensePort {
   }
 
   async getLicenses(customerId: string): Promise<UpstreamResult<LicenseState>> {
-    const result = await this.fetcher.fetchLicenseState(
+    return this.fetcher.fetchLicenseState(
       `/service/v1/customers/${encodeURIComponent(customerId)}/licenses`,
     );
-    if (result.ok) return result;
-    if (result.error.code === 'missing_binding') {
-      return { ok: false, error: { code: 'missing_binding', detail: 'License service binding is not configured.' } };
-    }
-    return { ok: false, error: { code: 'not_implemented', detail: 'License Service does not implement the license read endpoint yet.' } };
   }
 
   async getLicense(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseRecord>> {
@@ -73,8 +63,20 @@ export class FetchLicenseService implements LicensePort {
       if (response.status === 401 || response.status === 403) return { ok: false, error: { code: 'unreachable', detail: 'upstream auth error' } };
       if (!response.ok) return { ok: false, error: { code: 'unreachable', detail: 'upstream error' } };
 
-      const data = await response.json() as LicenseRecord;
-      return { ok: true, value: data };
+      const payload = await response.json() as { data?: LicenseRecord } & LicenseRecord;
+      const record = payload.data ?? payload;
+      const mapped = {
+        id: (record as { id?: string; licenseId?: string }).id ?? (record as { licenseId?: string }).licenseId ?? '',
+        licenseType: (record as { licenseType?: string }).licenseType ?? 'license',
+        status: (record as LicenseRecord).status,
+        issuedAt: (record as LicenseRecord).issuedAt ?? (record as { validFrom?: string }).validFrom ?? '',
+        expiresAt: (record as LicenseRecord).expiresAt ?? (record as { validUntil?: string }).validUntil ?? '',
+        product: (record as LicenseRecord).product ?? (record as { productId?: string }).productId,
+        revision: (record as LicenseRecord).revision,
+        permittedAgentProducts: (record as LicenseRecord).permittedAgentProducts ?? [],
+        deployments: (record as LicenseRecord).deployments ?? [],
+      };
+      return { ok: true, value: mapped };
     } catch {
       return { ok: false, error: { code: 'unreachable', detail: 'upstream unreachable' } };
     }
