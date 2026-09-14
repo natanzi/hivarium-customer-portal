@@ -13,6 +13,8 @@ import RequestNew from './pages/RequestNew';
 import RequestDetail from './pages/RequestDetail';
 import Account from './pages/Account';
 import Unauthorized from './pages/Unauthorized';
+import NotProvisioned from './pages/NotProvisioned';
+import AccessDisabled from './pages/AccessDisabled';
 import ServiceUnavailable from './pages/ServiceUnavailable';
 
 /**
@@ -59,8 +61,28 @@ function Gate() {
     return (
       <Routes>
         <Route path="/unauthorized" element={<Unauthorized />} />
+        <Route path="/not-provisioned" element={<NotProvisioned />} />
+        <Route path="/access-disabled" element={<AccessDisabled />} />
         <Route path="/service-unavailable" element={<ServiceUnavailable />} />
         <Route path="*" element={<Navigate to="/unauthorized" replace />} />
+      </Routes>
+    );
+  }
+
+  if (sessionState.status === 'not_provisioned') {
+    return (
+      <Routes>
+        <Route path="/not-provisioned" element={<NotProvisioned />} />
+        <Route path="*" element={<Navigate to="/not-provisioned" replace />} />
+      </Routes>
+    );
+  }
+
+  if (sessionState.status === 'access_disabled') {
+    return (
+      <Routes>
+        <Route path="/access-disabled" element={<AccessDisabled />} />
+        <Route path="*" element={<Navigate to="/access-disabled" replace />} />
       </Routes>
     );
   }

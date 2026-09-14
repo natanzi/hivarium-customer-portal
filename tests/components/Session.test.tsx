@@ -59,10 +59,16 @@ describe('session guard', () => {
     await waitFor(() => expect(screen.queryByRole('status', { name: /checking your session/i })).not.toBeInTheDocument());
   });
 
-  it('never renders the shell for an invalid session', async () => {
-    installFetchMock({ '/api/v1/account/status': failed(403, 'forbidden', 'No access.') });
+  it('never renders the shell for a disabled evaluation membership', async () => {
+    installFetchMock({ '/api/v1/account/status': failed(403, 'access_disabled', 'Portal access is disabled for this account.') });
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Not authorized' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Portal access is disabled' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
+  });
+
+  it('shows a provisioned-required page for authenticated users without membership', async () => {
+    installFetchMock({ '/api/v1/account/status': failed(403, 'not_provisioned', 'Your account has not been provisioned.') });
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Your account has not been provisioned' })).toBeInTheDocument();
   });
 });

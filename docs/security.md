@@ -26,8 +26,12 @@ every API request:
 - **Fail closed**: if `ACCESS_TEAM_DOMAIN` or `ACCESS_AUD` is missing, every
   `/api/v1/*` request returns `503 service_unavailable`. A missing, malformed,
   badly signed, expired, wrong-issuer or wrong-audience token returns `401
-  unauthorized`. Unknown member, disabled member and missing token all return
-  the identical envelope, so the portal never reveals membership existence.
+  unauthorized`. Unauthenticated callers (missing or invalid token) share an
+  identical `401` envelope. After a verified Access JWT, an email with no
+  membership returns `403 not_provisioned`, a disabled membership returns
+  `403 access_disabled`, and an expired evaluation membership returns
+  `403 access_expired`. None of those 403 bodies include other customers'
+  identifiers.
 - **Local development only**: when `ENVIRONMENT !== 'production'`, the
   identically-verified JWT may arrive via the `PORTAL_DEV_JWT` cookie. The
   deployed Worker (`ENVIRONMENT=production` in `wrangler.jsonc`) never accepts

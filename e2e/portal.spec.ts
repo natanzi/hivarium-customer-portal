@@ -207,10 +207,12 @@ test.describe('state pages and mobile smoke', () => {
     await expect(page.getByRole('heading', { name: 'Not authorized' })).toBeVisible();
   });
 
-  test('unknown membership lands on the unauthorized page', async ({ context, page }) => {
+  test('unknown membership lands on the provisioned-required page', async ({ context, page }) => {
     await signIn(context, EMAILS.stranger);
     await page.goto('/overview');
-    await expect(page.getByRole('heading', { name: 'Not authorized' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: 'Your account has not been provisioned' })).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test('desktop smoke: sidebar navigation and sign-out link', async ({ context, page }, testInfo) => {

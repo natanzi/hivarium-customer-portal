@@ -15,7 +15,7 @@
 
 import type { Capabilities, PortalRole } from '../../shared/types';
 import type { MembershipRow } from '../db/repos/memberships';
-import { findActiveMembershipByEmail } from '../db/repos/memberships';
+import { findActiveMembershipByEmail, findMembershipAccessStateByEmail } from '../db/repos/memberships';
 import type { ApiClientRow } from '../db/repos/api-clients';
 import { findClientByCredential, touchClientLastUsed } from '../db/repos/api-clients';
 import { capabilitiesFor } from './roles';
@@ -28,6 +28,9 @@ export type AuthFailure =
   | { kind: 'no_token' }
   | { kind: 'invalid_token' }
   | { kind: 'no_membership' }
+  | { kind: 'not_provisioned' }
+  | { kind: 'access_disabled' }
+  | { kind: 'access_expired' }
   | { kind: 'invalid_credentials' };
 
 export interface SessionIdentity {
@@ -152,19 +155,24 @@ async function resolveSessionIdentity(
     if (typeof email !== 'string' || email.trim() === '') {
       return { ok: false, failure: { kind: 'invalid_token' } };
     }
-    const membership = await findActiveMembershipByEmail(db, email);
-    if (!membership) return { ok: false, failure: { kind: 'no_membership' } };
-    return {
-      ok: true,
-      identity: {
-        kind: 'session',
-        email: membership.emailNormalized,
-        membership,
-        customerId: membership.customerId,
-        role: membership.role,
-        capabilities: capabilitiesFor(membership.role),
-      },
-    };
+    const membership = await findActiveMembershipByEmail(db, email, deps.now);
+    if (membership) {
+      return {
+        ok: true,
+        identity: {
+          kind: 'session',
+          email: membership.emailNormalized,
+          membership,
+          customerId: membership.customerId,
+          role: membership.role,
+          capabilities: capabilitiesFor(membership.role),
+        },
+      };
+    }
+    const access = await findMembershipAccessStateByEmail(db, email, deps.now);
+    if (access === 'disabled') return { ok: false, failure: { kind: 'access_disabled' } };
+    if (access === 'expired') return { ok: false, failure: { kind: 'access_expired' } };
+    return { ok: false, failure: { kind: 'not_provisioned' } };
   } catch (error) {
     if (error instanceof JwtVerificationError) {
       return { ok: false, failure: { kind: 'invalid_token' } };

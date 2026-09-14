@@ -1,0 +1,1 @@
+Landing never writes Operator or Portal databases. See `../hivarium-operator-console/architecture/demo-request-flow.md` when working across checkouts, or the copy in this repository at `docs/demo-request-api.md`.

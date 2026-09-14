@@ -6,6 +6,8 @@ export type SessionState =
   | { status: 'loading' }
   | { status: 'ready'; session: SessionAccountStatus }
   | { status: 'unauthorized' }
+  | { status: 'not_provisioned' }
+  | { status: 'access_disabled' }
   | { status: 'unavailable' };
 
 const SessionContext = createContext<SessionState>({ status: 'loading' });
@@ -20,8 +22,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         .then((session) => setState({ status: 'ready', session }))
         .catch((error: unknown) => {
           if (error instanceof ApiError) {
-            if (error.status === 401 || error.status === 403) {
+            if (error.status === 401) {
               setState({ status: 'unauthorized' });
+              return;
+            }
+            if (error.status === 403 && error.code === 'not_provisioned') {
+              setState({ status: 'not_provisioned' });
+              return;
+            }
+            if (error.status === 403) {
+              setState({ status: 'access_disabled' });
               return;
             }
             if (error.status === 503) {

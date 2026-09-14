@@ -41,6 +41,7 @@ import {
   handleOperatorGetRequest,
   handleOperatorListRequests,
 } from './api/operator-handlers';
+import { handleOperatorUpsertMembership } from './api/membership-handlers';
 import { InMemoryRateLimiter, MACHINE_RATE_LIMIT, MACHINE_RATE_WINDOW_MS } from './api/rate-limit';
 import { newCorrelationId } from './util';
 
@@ -191,6 +192,16 @@ async function handleServiceApi(request: Request, env: PortalEnv, url: URL): Pro
       const body = await handleOperatorDecision(env.PORTAL_DB, segments[3], payload, auth.principal, requestId);
       return json(body, 200, { 'x-request-id': requestId });
     }
+    if (
+      segments[2] === 'customers' &&
+      segments[4] === 'memberships' &&
+      segments.length === 6 &&
+      request.method === 'PUT'
+    ) {
+      const payload = await readJsonBody(request);
+      const body = await handleOperatorUpsertMembership(env.PORTAL_DB, segments[3], segments[5], payload, requestId);
+      return json(body, body.replayed ? 200 : 201, { 'x-request-id': requestId });
+    }
     return json(errorEnvelope('not_found', 'Unknown service route.', requestId), 404, { 'x-request-id': requestId });
   } catch (error) {
     if (error instanceof ApiError) return errorResponse(error, requestId);
@@ -231,8 +242,16 @@ async function handleApi(request: Request, env: PortalEnv, url: URL, extensions:
     if (failure.kind === 'invalid_credentials') {
       return json(errorEnvelope('unauthorized', 'Invalid credentials.', requestId), 401, { 'x-request-id': requestId });
     }
-    // no_token, invalid_token, no_membership: identical envelope — never
-    // reveal whether an email is a portal member.
+    if (failure.kind === 'not_provisioned') {
+      return json(errorEnvelope('not_provisioned', 'Your account has not been provisioned.', requestId), 403, { 'x-request-id': requestId });
+    }
+    if (failure.kind === 'access_disabled') {
+      return json(errorEnvelope('access_disabled', 'Portal access is disabled for this account.', requestId), 403, { 'x-request-id': requestId });
+    }
+    if (failure.kind === 'access_expired') {
+      return json(errorEnvelope('access_expired', 'This evaluation workspace has expired.', requestId), 403, { 'x-request-id': requestId });
+    }
+    // no_token, invalid_token: identical envelope — never reveal membership by unauthenticated probing.
     return json(errorEnvelope('unauthorized', 'Sign-in required.', requestId), 401, { 'x-request-id': requestId });
   }
 

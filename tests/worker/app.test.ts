@@ -93,21 +93,34 @@ describe('authentication and fail-closed behavior', () => {
     }
   });
 
-  it('never reveals membership existence through differing errors', async () => {
-    const unknown = await sessionRequest(app.app, app.env, unknownToken(), '/api/v1/account/status');
-    const disabled = await sessionRequest(app.app, app.env, disabledToken(), '/api/v1/account/status');
-    expect(unknown.status).toBe(401);
-    expect(disabled.status).toBe(401);
-    const a = await jsonBody(unknown);
-    const b = await jsonBody(disabled);
-    // Correlation ids are per-request; the error code and message must match.
+  it('does not leak membership existence to unauthenticated callers', async () => {
+    const missing = await appFetch(app.app)(new Request('https://portal.test/api/v1/account/status'), app.env);
+    const token = await app.sign({ email: 'dev.admin@acme.example' });
+    const tampered = token.slice(0, -3) + (token.endsWith('aaa') ? 'bbb' : 'aaa');
+    const invalid = await sessionRequest(app.app, app.env, tampered, '/api/v1/account/status');
+    expect(missing.status).toBe(401);
+    expect(invalid.status).toBe(401);
+    const a = await jsonBody(missing);
+    const b = await jsonBody(invalid);
     expect(a.error).toBe(b.error);
     expect(a.message).toBe(b.message);
   });
 
+  it('distinguishes unprovisioned and disabled memberships after Access authentication', async () => {
+    const unknown = await sessionRequest(app.app, app.env, unknownToken(), '/api/v1/account/status');
+    const disabled = await sessionRequest(app.app, app.env, disabledToken(), '/api/v1/account/status');
+    expect(unknown.status).toBe(403);
+    expect(disabled.status).toBe(403);
+    const unknownBody = await jsonBody(unknown);
+    const disabledBody = await jsonBody(disabled);
+    expect(unknownBody.error).toBe('not_provisioned');
+    expect(disabledBody.error).toBe('access_disabled');
+    expect(JSON.stringify(unknownBody)).not.toMatch(/acme-dev-001/);
+  });
+
   it('rejects users without a membership and disabled memberships', async () => {
-    expect((await sessionRequest(app.app, app.env, unknownToken(), '/api/v1/account/status')).status).toBe(401);
-    expect((await sessionRequest(app.app, app.env, disabledToken(), '/api/v1/account/status')).status).toBe(401);
+    expect((await sessionRequest(app.app, app.env, unknownToken(), '/api/v1/account/status')).status).toBe(403);
+    expect((await sessionRequest(app.app, app.env, disabledToken(), '/api/v1/account/status')).status).toBe(403);
   });
 
   it('serves a session account status for a valid member', async () => {

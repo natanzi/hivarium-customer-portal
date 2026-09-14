@@ -12,6 +12,7 @@ export interface MembershipRow {
   status: MembershipStatus;
   createdAt: string;
   updatedAt: string;
+  demoExpiresAt: string | null;
 }
 
 interface MembershipDbRow {
@@ -23,6 +24,7 @@ interface MembershipDbRow {
   status: string;
   created_at: string;
   updated_at: string;
+  demo_expires_at: string | null;
 }
 
 function mapMembership(row: MembershipDbRow): MembershipRow {
@@ -35,6 +37,7 @@ function mapMembership(row: MembershipDbRow): MembershipRow {
     status: row.status as MembershipStatus,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    demoExpiresAt: row.demo_expires_at,
   };
 }
 
@@ -46,20 +49,44 @@ function mapMembership(row: MembershipDbRow): MembershipRow {
 export async function findActiveMembershipByEmail(
   db: D1Database,
   email: string,
+  nowMs?: () => number,
 ): Promise<MembershipRow | null> {
   const normalized = normalizeEmail(email);
+  const now = new Date(nowMs ? nowMs() : Date.now()).toISOString();
   const result = await db
     .prepare(
-      `SELECT id, customer_id, email_normalized, display_name, role, status, created_at, updated_at
+      `SELECT id, customer_id, email_normalized, display_name, role, status, created_at, updated_at, demo_expires_at
        FROM portal_memberships
        WHERE email_normalized = ?1 AND status = 'active'
+         AND (demo_expires_at IS NULL OR demo_expires_at > ?2)
        ORDER BY created_at ASC
        LIMIT 2`,
     )
-    .bind(normalized)
+    .bind(normalized, now)
     .all<MembershipDbRow>();
   if (result.results.length !== 1) return null;
   return mapMembership(result.results[0]);
+}
+
+export async function findMembershipAccessStateByEmail(
+  db: D1Database,
+  email: string,
+  nowMs?: () => number,
+): Promise<'none' | 'disabled' | 'expired'> {
+  const normalized = normalizeEmail(email);
+  const now = new Date(nowMs ? nowMs() : Date.now()).toISOString();
+  const result = await db
+    .prepare(
+      `SELECT status, demo_expires_at FROM portal_memberships WHERE email_normalized = ?1 ORDER BY created_at ASC`,
+    )
+    .bind(normalized)
+    .all<{ status: string; demo_expires_at: string | null }>();
+  if (result.results.length === 0) return 'none';
+  const expiredActive = result.results.some(
+    (row) => row.status === 'active' && row.demo_expires_at !== null && row.demo_expires_at <= now,
+  );
+  if (expiredActive) return 'expired';
+  return 'disabled';
 }
 
 export async function findMembershipById(
@@ -129,6 +156,7 @@ export async function createMembership(
     status,
     createdAt: now,
     updatedAt: now,
+    demoExpiresAt: null,
   };
 }
 

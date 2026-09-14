@@ -47,17 +47,17 @@ export class FetchLicenseService implements LicensePort {
 
   async getLicense(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseRecord>> {
     const path = `/service/v1/customers/${encodeURIComponent(customerId)}/licenses/${encodeURIComponent(licenseId)}`;
-    const requestUrl = this.binding
-      ? `https://license-service${path}`
-      : `${this.urlOverride}${path}`;
+    const requestUrl = this.urlOverride
+      ? `${this.urlOverride}${path}`
+      : `https://license-service${path}`;
     try {
       const headers = new Headers();
       if (this.token) {
         headers.set('Authorization', `Bearer ${this.token}`);
       }
-      const response = this.binding
-        ? await this.binding.fetch(requestUrl, { headers })
-        : await fetch(requestUrl, { headers });
+      const response = this.urlOverride
+        ? await fetch(requestUrl, { headers })
+        : await this.binding!.fetch(requestUrl, { headers });
 
       if (response.status === 404) return { ok: false, error: { code: 'not_implemented', detail: 'License not found' } };
       if (response.status === 401 || response.status === 403) return { ok: false, error: { code: 'unreachable', detail: 'upstream auth error' } };
@@ -87,17 +87,17 @@ export class FetchLicenseService implements LicensePort {
       return { ok: false, error: { code: 'missing_binding', detail: 'License service binding is not configured.' } };
     }
     const path = `/service/v1/customers/${encodeURIComponent(customerId)}/licenses/${encodeURIComponent(licenseId)}/document`;
-    const requestUrl = this.binding
-      ? `https://license-service${path}`
-      : `${this.urlOverride}${path}`;
+    const requestUrl = this.urlOverride
+      ? `${this.urlOverride}${path}`
+      : `https://license-service${path}`;
     try {
       const headers = new Headers();
       if (this.token) {
         headers.set('Authorization', `Bearer ${this.token}`);
       }
-      const response = this.binding
-        ? await this.binding.fetch(requestUrl, { headers })
-        : await fetch(requestUrl, { headers });
+      const response = this.urlOverride
+        ? await fetch(requestUrl, { headers })
+        : await this.binding!.fetch(requestUrl, { headers });
 
       if (response.status === 404) return { ok: false, error: { code: 'not_implemented', detail: 'Document not found' } };
       if (response.status === 401 || response.status === 403) return { ok: false, error: { code: 'unreachable', detail: 'upstream auth error' } };

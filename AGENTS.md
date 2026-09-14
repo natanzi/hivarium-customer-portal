@@ -44,7 +44,7 @@ See `docs/architecture.md`, `docs/internal-service-contracts.md`, `docs/security
 
 - Verify Cloudflare Access JWT signature, issuer, audience, expiration, and key ID before resolving a membership.
 - Missing authentication configuration fails closed.
-- Unknown and disabled memberships must not reveal whether an email or customer exists.
+- Unknown email and disabled memberships must not reveal tenant data. After a verified Access JWT, unprovisioned users receive `403 not_provisioned` and disabled/expired memberships receive a distinct access-disabled envelope. Unauthenticated callers still receive identical `401` responses.
 - Enforce tenant isolation on every read and mutation in the Worker, not only in the UI.
 - Browser mutations require same-origin checks and JSON validation.
 - Machine clients use independent hashed credentials and explicit scopes; never reuse browser session identity.

@@ -79,9 +79,9 @@ async function fetchServiceJson(deps: FetchServiceDeps, path: string): Promise<u
     throw upstream('missing_binding', `Service binding is not configured for ${path}.`);
   }
   try {
-    const requestUrl = deps.binding
-      ? `https://operator-service${path}`
-      : `${deps.urlOverride}${path}`;
+    const requestUrl = deps.urlOverride
+      ? `${deps.urlOverride}${path}`
+      : `https://operator-service${path}`;
 
     // Add timeouts
     const controller = new AbortController();
@@ -97,9 +97,9 @@ async function fetchServiceJson(deps: FetchServiceDeps, path: string): Promise<u
       signal: controller.signal,
     };
 
-    const response = deps.binding
-      ? await deps.binding.fetch(requestUrl, init)
-      : await fetch(requestUrl, init);
+    const response = deps.urlOverride
+      ? await fetch(requestUrl, init)
+      : await deps.binding!.fetch(requestUrl, init);
 
     clearTimeout(id);
     if (response.status === 404) {

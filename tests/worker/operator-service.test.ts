@@ -386,6 +386,84 @@ describe('operator decisions', () => {
   });
 });
 
+describe('operator membership provisioning', () => {
+  const membershipPath = (customerId: string, email: string) =>
+    `/service/v1/customers/${encodeURIComponent(customerId)}/memberships/${encodeURIComponent(email)}`;
+
+  function membershipBody(overrides: Record<string, unknown> = {}) {
+    return {
+      displayName: 'Eval Admin',
+      role: 'customer_admin',
+      status: 'active',
+      demoExpiresAt: '2026-10-14T00:00:00.000Z',
+      correlationId: 'corr-mbr',
+      idempotencyKey: randomIdempotencyKey(),
+      ...overrides,
+    };
+  }
+
+  it('rejects customer JWTs and machine credentials on the membership route', async () => {
+    const path = membershipPath('demo_new', 'ada@acme.example');
+    expect((await sessionRequest(app.app, app.env, adminJwt, path, { method: 'PUT', body: '{}' })).status).toBe(401);
+    expect((await machineRequest(app.app, app.env, machineCredential, path, { method: 'PUT', body: '{}' })).status).toBe(401);
+  });
+
+  it('creates, replays, and reactivates a membership without leaking other tenants', async () => {
+    const email = 'eval.admin@acme-eval.example';
+    const path = membershipPath('acme-dev-001', email);
+    const body = membershipBody({ idempotencyKey: 'membership-key-01' });
+    const created = await serviceRequest(app.app, app.env, OPERATOR_TOKEN, path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    expect(created.status).toBe(201);
+    const createdJson = await jsonBody(created);
+    expect(createdJson.membershipId).toBeTruthy();
+
+    const replay = await serviceRequest(app.app, app.env, OPERATOR_TOKEN, path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    expect(replay.status).toBe(200);
+    expect((await jsonBody(replay)).membershipId).toBe(createdJson.membershipId);
+
+    const conflictKey = await serviceRequest(app.app, app.env, OPERATOR_TOKEN, path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, displayName: 'Other', idempotencyKey: 'membership-key-01' }),
+    });
+    expect(conflictKey.status).toBe(409);
+
+    const otherCustomer = await serviceRequest(
+      app.app,
+      app.env,
+      OPERATOR_TOKEN,
+      membershipPath('globex-dev-002', email),
+      { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(membershipBody({ idempotencyKey: 'membership-key-02' })) },
+    );
+    expect(otherCustomer.status).toBe(409);
+    expect(JSON.stringify(await jsonBody(otherCustomer))).not.toMatch(/acme-dev-001/);
+  });
+
+  it('treats an expired evaluation membership as access_expired without tenant leakage', async () => {
+    const email = 'expired.eval@acme.example';
+    const created = await serviceRequest(app.app, app.env, OPERATOR_TOKEN, membershipPath('acme-dev-001', email), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(membershipBody({ demoExpiresAt: '2020-01-01T00:00:00.000Z', idempotencyKey: 'membership-exp-01' })),
+    });
+    expect([200, 201]).toContain(created.status);
+    const token = await app.sign({ email });
+    const response = await sessionRequest(app.app, app.env, token, '/api/v1/account/status');
+    expect(response.status).toBe(403);
+    const body = await jsonBody(response);
+    expect(body.error).toBe('access_expired');
+    expect(JSON.stringify(body)).not.toMatch(/acme-dev-001/);
+  });
+});
+
 describe('operator repository behavior', () => {
   it('lists, filters, and bounds pages against D1', async () => {
     const page = await listRequestsForOperator(app.harness.db, { limit: 2 });

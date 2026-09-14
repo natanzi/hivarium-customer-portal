@@ -22,6 +22,25 @@ describe('FetchOperatorService', () => {
     expect(fetchArgs[0].init.headers.get('Authorization')).toBe('Bearer op-token');
   });
 
+  it('prefers a local URL override over a service binding', async () => {
+    const binding = {
+      fetch: async () => {
+        throw new Error('binding must not be used when urlOverride is set');
+      },
+    } as unknown as Fetcher;
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ organization: { customerId: 'cust-123' } })));
+    vi.stubGlobal('fetch', fetchSpy);
+    const op = new FetchOperatorService({
+      binding,
+      urlOverride: 'http://127.0.0.1:8789/operator',
+      token: 'op-token',
+    });
+    const res = await op.getPortalView('cust-123');
+    expect(res.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('fails on missing binding', async () => {
     const op = new FetchOperatorService({});
     const res = await op.getPortalView('cust-123');

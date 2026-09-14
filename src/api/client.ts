@@ -18,7 +18,10 @@ export type ApiErrorCode =
   | 'too_many_requests'
   | 'service_unavailable'
   | 'upstream_unavailable'
-  | 'internal_error';
+  | 'internal_error'
+  | 'not_provisioned'
+  | 'access_disabled'
+  | 'access_expired';
 
 export class ApiError extends Error {
   constructor(

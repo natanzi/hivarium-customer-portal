@@ -28,9 +28,17 @@ export default function Account() {
     );
   }
 
+  if (sessionState.status !== 'ready') {
+    return (
+      <Page title="Account">
+        <UnavailableState title="Not signed in" message="Your session could not be verified. Sign in again to continue." />
+      </Page>
+    );
+  }
+
   const session = sessionState.session;
   const capabilityLabels: string[] = [
-    ...session.capabilities.requestTypes.map((t) => `Submit ${REQUEST_TYPE_LABELS[t as RequestType].toLowerCase()} requests`),
+    ...session.capabilities.requestTypes.map((t: RequestType) => `Submit ${REQUEST_TYPE_LABELS[t].toLowerCase()} requests`),
     ...(session.capabilities.canCancel ? ['Cancel submitted requests'] : []),
     ...(session.capabilities.canComment ? ['Comment on requests'] : []),
   ];
