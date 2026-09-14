@@ -21,14 +21,12 @@
       "database_id": "92f5fed1-be18-4f82-8ac9-ae217a0789fe"
     }
   ],
-  // Service bindings for internal services (see docs/internal-service-contracts.md).
-  // Keep commented out until the Operator Console / License Service workers are
-  // deployed and accept the portal's service credential. While absent, the
-  // related portal sections fail closed with a safe unavailable response.
-  // "services": [
-  //   { "binding": "OPERATOR_SERVICE", "service": "hivarium-operator-console" },
-  //   { "binding": "LICENSE_SERVICE", "service": "hivarium-license-service" }
-  // ],
+  // Internal Worker-to-Worker service bindings. Authentication is still
+  // enforced independently with directional bearer-token secrets.
+  "services": [
+    { "binding": "OPERATOR_SERVICE", "service": "hivarium-operator-console" },
+    { "binding": "LICENSE_SERVICE", "service": "hivarium-license-service" }
+  ],
   "vars": {
     "ENVIRONMENT": "production"
   }
