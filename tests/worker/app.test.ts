@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
+import { env as workerEnv } from 'cloudflare:workers';
+import worker from '../../worker/index';
 import { createTestApp, sessionRequest, machineRequest, jsonBody, appFetch, type TestApp } from './helpers/app';
 import { createClient, generateCredential } from '../../worker/db/repos/api-clients';
 import { findClientByCredential } from '../../worker/db/repos/api-clients';
@@ -8,22 +11,38 @@ import { MemoryOperatorService, MemoryLicenseService } from '../../worker/servic
 import { randomIdempotencyKey } from './helpers/jwt';
 
 let app: TestApp;
+const tokens = {
+  admin: '',
+  billing: '',
+  tech: '',
+  readonly: '',
+  disabled: '',
+  unknown: '',
+  globex: '',
+};
 
 beforeAll(async () => {
   app = await createTestApp();
+  tokens.admin = await app.sign({ email: 'dev.admin@acme.example' });
+  tokens.billing = await app.sign({ email: 'dev.billing@acme.example' });
+  tokens.tech = await app.sign({ email: 'dev.tech@acme.example' });
+  tokens.readonly = await app.sign({ email: 'dev.readonly@acme.example' });
+  tokens.disabled = await app.sign({ email: 'dev.disabled@acme.example' });
+  tokens.unknown = await app.sign({ email: 'stranger@example.com' });
+  tokens.globex = await app.sign({ email: 'dev.admin@globex.example' });
 });
 
 afterAll(async () => {
   await app.close();
 });
 
-const adminToken = () => app.sign({ email: 'dev.admin@acme.example' });
-const billingToken = () => app.sign({ email: 'dev.billing@acme.example' });
-const techToken = () => app.sign({ email: 'dev.tech@acme.example' });
-const readonlyToken = () => app.sign({ email: 'dev.readonly@acme.example' });
-const disabledToken = () => app.sign({ email: 'dev.disabled@acme.example' });
-const unknownToken = () => app.sign({ email: 'stranger@example.com' });
-const globexToken = () => app.sign({ email: 'dev.admin@globex.example' });
+const adminToken = () => tokens.admin;
+const billingToken = () => tokens.billing;
+const techToken = () => tokens.tech;
+const readonlyToken = () => tokens.readonly;
+const disabledToken = () => tokens.disabled;
+const unknownToken = () => tokens.unknown;
+const globexToken = () => tokens.globex;
 
 describe('authentication and fail-closed behavior', () => {
   it('rejects API requests without a JWT', async () => {
@@ -35,7 +54,7 @@ describe('authentication and fail-closed behavior', () => {
 
   it('rejects a token with an invalid signature', async () => {
     const { keyPair } = app;
-    const token = app.sign({ email: 'dev.admin@acme.example' });
+    const token = await app.sign({ email: 'dev.admin@acme.example' });
     const tampered = token.slice(0, -3) + (token.endsWith('aaa') ? 'bbb' : 'aaa');
     void keyPair;
     const response = await sessionRequest(app.app, app.env, tampered, '/api/v1/account/status');
@@ -43,20 +62,20 @@ describe('authentication and fail-closed behavior', () => {
   });
 
   it('rejects a token with the wrong issuer', async () => {
-    const token = app.sign({ email: 'dev.admin@acme.example', iss: 'https://evil.example' });
+    const token = await app.sign({ email: 'dev.admin@acme.example', iss: 'https://evil.example' });
     const response = await sessionRequest(app.app, app.env, token, '/api/v1/account/status');
     expect(response.status).toBe(401);
   });
 
   it('rejects a token with the wrong audience', async () => {
-    const token = app.sign({ email: 'dev.admin@acme.example', aud: 'other-app' });
+    const token = await app.sign({ email: 'dev.admin@acme.example', aud: 'other-app' });
     const response = await sessionRequest(app.app, app.env, token, '/api/v1/account/status');
     expect(response.status).toBe(401);
   });
 
   it('rejects an expired token', async () => {
     const now = Math.floor(Date.now() / 1000);
-    const token = app.sign({ email: 'dev.admin@acme.example', exp: now - 3600, nbf: now - 7200, iat: now - 7200 });
+    const token = await app.sign({ email: 'dev.admin@acme.example', exp: now - 3600, nbf: now - 7200, iat: now - 7200 });
     const response = await sessionRequest(app.app, app.env, token, '/api/v1/account/status');
     expect(response.status).toBe(401);
   });
@@ -64,7 +83,7 @@ describe('authentication and fail-closed behavior', () => {
   it('fails closed (503) when ACCESS_TEAM_DOMAIN or ACCESS_AUD is missing', async () => {
     const broken = await createTestApp({ missingAuthConfig: true });
     try {
-      const token = broken.sign({ email: 'dev.admin@acme.example' });
+      const token = await broken.sign({ email: 'dev.admin@acme.example' });
       const response = await sessionRequest(broken.app, broken.env, token, '/api/v1/account/status');
       expect(response.status).toBe(503);
       const body = await jsonBody(response);
@@ -630,7 +649,7 @@ describe('machine API', () => {
       const body = await jsonBody(r3);
       expect((body as { error: string }).error).toBe('too_many_requests');
       // Sessions are not subject to the machine limiter.
-      const session = await sessionRequest(limitedApp.app, limitedApp.env, limitedApp.sign({ email: 'dev.admin@acme.example' }), '/api/v1/account/status');
+      const session = await sessionRequest(limitedApp.app, limitedApp.env, await limitedApp.sign({ email: 'dev.admin@acme.example' }), '/api/v1/account/status');
       expect(session.status).toBe(200);
     } finally {
       await limitedApp.close();
@@ -645,7 +664,7 @@ describe('upstream service behavior', () => {
       license: new MemoryLicenseService({ failWith: 'missing' }),
     });
     try {
-      const response = await sessionRequest(broken.app, broken.env, broken.sign({ email: 'dev.admin@acme.example' }), '/api/v1/subscription');
+      const response = await sessionRequest(broken.app, broken.env, await broken.sign({ email: 'dev.admin@acme.example' }), '/api/v1/subscription');
       expect(response.status).toBe(503);
       const body = await jsonBody(response);
       expect((body as { error: string }).error).toBe('service_unavailable');
@@ -659,7 +678,7 @@ describe('upstream service behavior', () => {
       operator: new MemoryOperatorService({ failWith: 'unreachable' }),
     });
     try {
-      const response = await sessionRequest(broken.app, broken.env, broken.sign({ email: 'dev.admin@acme.example' }), '/api/v1/subscription');
+      const response = await sessionRequest(broken.app, broken.env, await broken.sign({ email: 'dev.admin@acme.example' }), '/api/v1/subscription');
       expect(response.status).toBe(503);
       const body = await jsonBody(response);
       expect((body as { error: string }).error).toBe('upstream_unavailable');
@@ -678,7 +697,7 @@ describe('upstream service behavior', () => {
       license: new MemoryLicenseService({ failWith: 'not_implemented' }),
     });
     try {
-      const r = await sessionRequest(stub.app, stub.env, stub.sign({ email: 'dev.admin@acme.example' }), '/api/v1/licenses');
+      const r = await sessionRequest(stub.app, stub.env, await stub.sign({ email: 'dev.admin@acme.example' }), '/api/v1/licenses');
       expect(r.status).toBe(503);
     } finally {
       await stub.close();
@@ -691,7 +710,7 @@ describe('upstream service behavior', () => {
       license: new MemoryLicenseService({ failWith: 'missing' }),
     });
     try {
-      const response = await sessionRequest(broken.app, broken.env, broken.sign({ email: 'dev.admin@acme.example' }), '/api/v1/overview');
+      const response = await sessionRequest(broken.app, broken.env, await broken.sign({ email: 'dev.admin@acme.example' }), '/api/v1/overview');
       expect(response.status).toBe(200);
       const body = await jsonBody(response);
       expect((body as { availability: { operator: string; license: string } }).availability.operator).toBe('missing');
@@ -743,7 +762,7 @@ describe('upstream service behavior', () => {
     void original;
     const monthly = await createTestApp({ operator: commercial });
     try {
-      const response = await sessionRequest(monthly.app, monthly.env, monthly.sign({ email: 'dev.admin@acme.example' }), '/api/v1/usage');
+      const response = await sessionRequest(monthly.app, monthly.env, await monthly.sign({ email: 'dev.admin@acme.example' }), '/api/v1/usage');
       expect(response.status).toBe(200);
       const body = await jsonBody(response);
       expect((body as { kind: string }).kind).toBe('commercial');
@@ -770,7 +789,14 @@ describe('root behavior and static assets', () => {
   });
 
   it('serves health without auth', async () => {
-    const response = await appFetch(app.app)(new Request('https://portal.test/api/health'), app.env);
+    const ctx = createExecutionContext();
+    const fetchHandler = worker.fetch!;
+    const response = await fetchHandler(
+      new Request('https://portal.test/api/health') as Parameters<typeof fetchHandler>[0],
+      workerEnv,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
     expect(response.status).toBe(200);
   });
 });

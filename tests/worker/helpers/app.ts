@@ -1,5 +1,7 @@
-/** Shared app-level test fixture: real D1 + real JWT verification + adapters. */
+/** Shared app-level test fixture: Worker-runtime D1 + real JWT verification + adapters. */
 
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
+import { env as workerEnv } from 'cloudflare:workers';
 import { createD1Harness, applyDevSeed, type D1Harness } from './d1';
 import { generateTestKeyPair, signTestJwt, TEST_AUDIENCE, TEST_TEAM_DOMAIN, type TestKeyPair } from './jwt';
 import { StaticKeyProvider } from '../../../worker/auth/access-jwt';
@@ -14,20 +16,26 @@ export interface TestApp {
   app: ReturnType<typeof createApp>;
   env: PortalEnv;
   keyPair: TestKeyPair;
-  sign: (claims?: Parameters<typeof signTestJwt>[1], kid?: string) => string;
+  sign: (claims?: Parameters<typeof signTestJwt>[1], kid?: string) => Promise<string>;
   close: () => Promise<void>;
 }
 
 type FetchHandler = (request: Request, env: PortalEnv) => Promise<Response>;
 
 /**
- * Wraps the ExportedHandler's optional fetch (which takes an ExecutionContext)
- * into a plain two-argument function for test calls.
+ * Invokes the Worker's fetch handler with a real ExecutionContext from
+ * cloudflare:test rather than a Node-only stub.
  */
 export function appFetch(app: unknown): FetchHandler {
-  const ctx = { waitUntil: () => {}, passThroughOnException: () => {} };
-  const handler = app as { fetch: (request: unknown, env: PortalEnv, ctx: unknown) => Promise<Response> };
-  return (request, env) => handler.fetch(request, env, ctx);
+  const handler = app as {
+    fetch: (request: Request, env: PortalEnv, ctx: ExecutionContext) => Promise<Response>;
+  };
+  return async (request, env) => {
+    const ctx = createExecutionContext();
+    const response = await handler.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+    return response;
+  };
 }
 
 export interface TestAppOptions {
@@ -43,10 +51,10 @@ export interface TestAppOptions {
 }
 
 export async function createTestApp(options: TestAppOptions = {}): Promise<TestApp> {
-  const harness = await createD1Harness(`test-db-${Math.random().toString(36).slice(2, 8)}`);
+  const harness = createD1Harness();
   if (options.seed ?? true) await applyDevSeed(harness.db);
 
-  const keyPair = generateTestKeyPair();
+  const keyPair = await generateTestKeyPair();
   const keyProvider = new StaticKeyProvider([{ ...keyPair.publicJwk, kid: 'test-kid', alg: 'RS256', use: 'sig' }]);
 
   const app = createApp({
@@ -57,10 +65,13 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   });
 
   const env: PortalEnv = {
-    PORTAL_DB: harness.db,
-    ENVIRONMENT: options.environment ?? 'test',
-    ACCESS_TEAM_DOMAIN: options.missingAuthConfig ? undefined : (options.teamDomain ?? TEST_TEAM_DOMAIN),
-    ACCESS_AUD: options.missingAuthConfig ? undefined : (options.audience ?? TEST_AUDIENCE),
+    PORTAL_DB: workerEnv.PORTAL_DB,
+    ASSETS: workerEnv.ASSETS,
+    ENVIRONMENT: options.environment ?? workerEnv.ENVIRONMENT ?? 'test',
+    ACCESS_TEAM_DOMAIN: options.missingAuthConfig ? undefined : (options.teamDomain ?? workerEnv.ACCESS_TEAM_DOMAIN ?? TEST_TEAM_DOMAIN),
+    ACCESS_AUD: options.missingAuthConfig ? undefined : (options.audience ?? workerEnv.ACCESS_AUD ?? TEST_AUDIENCE),
+    OPERATOR_SERVICE: workerEnv.OPERATOR_SERVICE,
+    LICENSE_SERVICE: workerEnv.LICENSE_SERVICE,
   };
 
   return {

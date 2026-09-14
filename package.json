@@ -10,9 +10,10 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.test.json --noEmit",
-    "test": "vitest run",
-    "test:worker": "vitest run --project worker",
-    "test:components": "vitest run --project components",
+    "test": "npm run test:unit && npm run test:worker && npm run test:components",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:worker": "vitest run --config vitest.worker.config.ts",
+    "test:components": "vitest run --config vitest.components.config.ts",
     "test:e2e": "npm run build && playwright test",
     "db:seed:dev": "wrangler d1 execute PORTAL_DB --local --file scripts/seed-dev.sql",
     "deploy": "wrangler deploy"
@@ -23,6 +24,7 @@
     "react-router": "^7.0.2"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.9",
     "@cloudflare/workers-types": "5.20260911.1",
     "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
@@ -33,11 +35,10 @@
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",
     "jsdom": "^23.2.0",
-    "miniflare": "^5.20260911.0-alpha",
     "typescript": "^5.8.3",
     "undici": "^6.19.2",
     "vite": "^6.3.5",
-    "vitest": "^5.0.0",
+    "vitest": "4.1.11",
     "wrangler": "4.131.1"
   }
 }

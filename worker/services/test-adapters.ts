@@ -20,7 +20,7 @@ import type {
   UsageSummary,
 } from '../../shared/types';
 import type { OperatorPort, UpstreamResult, PortalView } from './operator';
-import type { LicensePort } from './license';
+import type { LicensePort, LicenseDocumentResult } from './license';
 
 export const FIXTURE_CUSTOMER_ID = 'acme-dev-001';
 
@@ -389,7 +389,7 @@ export class MemoryLicenseService implements LicensePort {
     return { ok: true, value: l };
   }
 
-  async downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<string>> {
+  async downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseDocumentResult>> {
     if (this.opts.failWith === 'missing') {
       return { ok: false, error: { code: 'missing_binding', detail: 'missing binding' } };
     }
@@ -399,6 +399,7 @@ export class MemoryLicenseService implements LicensePort {
     if (this.opts.failWith === 'not_implemented') {
       return { ok: false, error: { code: 'not_implemented', detail: 'not implemented upstream' } };
     }
-    return { ok: true, value: `{"signed":true,"licenseId":"${licenseId}"}` };
+    const encoder = new TextEncoder();
+    return { ok: true, value: { body: encoder.encode(`{"signed":true,"licenseId":"${licenseId}"}`).buffer as ArrayBuffer, contentType: 'application/json', contentDisposition: null } };
   }
 }

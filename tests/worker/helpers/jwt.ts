@@ -6,29 +6,46 @@
  * real. The matching public JWK is served by a StaticKeyProvider.
  */
 
-import { generateKeyPairSync, sign } from "node:crypto";
-import { Buffer } from "node:buffer";
-import type { JwkRsaKey } from '../../../worker/auth/access-jwt';
+import { base64UrlEncode, type JwkRsaKey } from '../../../worker/auth/access-jwt';
 
 export const TEST_TEAM_DOMAIN = 'portal.test';
 export const TEST_AUDIENCE = 'portal-e2e-aud';
 
 export interface TestKeyPair {
-  privateKey: import('node:crypto').KeyObject;
+  privateKey: CryptoKey;
   publicJwk: JwkRsaKey;
 }
 
-export function generateTestKeyPair(): TestKeyPair {
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const publicJwk = publicKey.export({ format: 'jwk' }) as unknown as JwkRsaKey;
-  return { privateKey, publicJwk };
+export async function generateTestKeyPair(): Promise<TestKeyPair> {
+  const pair = await crypto.subtle.generateKey(
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
+    true,
+    ['sign', 'verify'],
+  );
+  const publicJwk = (await crypto.subtle.exportKey('jwk', pair.publicKey)) as JsonWebKey;
+  return {
+    privateKey: pair.privateKey,
+    publicJwk: {
+      kid: 'test-kid',
+      kty: publicJwk.kty ?? 'RSA',
+      n: publicJwk.n ?? '',
+      e: publicJwk.e ?? '',
+      alg: 'RS256',
+      use: 'sig',
+    },
+  };
 }
 
 export function publicJwkToJwks(kid: string, key: JwkRsaKey): { keys: JwkRsaKey[] } {
   return { keys: [{ ...key, kid, alg: 'RS256', use: 'sig' }] };
 }
 
-export function signTestJwt(
+export async function signTestJwt(
   pair: TestKeyPair,
   claims: {
     aud?: string | string[];
@@ -41,7 +58,7 @@ export function signTestJwt(
   } = {},
   kid = 'test-kid',
   nowSeconds: number = Math.floor(Date.now() / 1000),
-): string {
+): Promise<string> {
   const header = { alg: 'RS256', kid, typ: 'JWT' };
   const payload = {
     aud: claims.aud ?? TEST_AUDIENCE,
@@ -53,17 +70,16 @@ export function signTestJwt(
     iat: claims.iat ?? nowSeconds,
     ...claims,
   };
-  const encode = (value: unknown) =>
-    Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
-  const signingInput = `${encode(header)}.${encode(payload)}`;
-  const signatureBytes = sign('RSA-SHA256', Buffer.from(signingInput, 'utf8'), pair.privateKey);
-  // Buffer + combined node/workers typings disagree on toString overloads;
-  // the cast is confined to this test helper.
-  const signature = (signatureBytes as unknown as { toString: (e: string) => string }).toString('base64url');
-  return `${signingInput}.${signature}`;
+  const encodeJson = (value: unknown) => base64UrlEncode(new TextEncoder().encode(JSON.stringify(value)));
+  const signingInput = `${encodeJson(header)}.${encodeJson(payload)}`;
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    pair.privateKey,
+    new TextEncoder().encode(signingInput),
+  );
+  return `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
 export function randomIdempotencyKey(): string {
   return `test-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
 }
-

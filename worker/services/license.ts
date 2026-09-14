@@ -15,10 +15,16 @@
 import type { LicenseState, LicenseRecord } from '../../shared/types';
 import { FetchOperatorService, type UpstreamResult } from './operator';
 
+export interface LicenseDocumentResult {
+  body: ArrayBuffer;
+  contentType: string | null;
+  contentDisposition: string | null;
+}
+
 export interface LicensePort {
   getLicenses(customerId: string): Promise<UpstreamResult<LicenseState>>;
   getLicense(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseRecord>>;
-  downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<string>>;
+  downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseDocumentResult>>;
 }
 
 export class FetchLicenseService implements LicensePort {
@@ -40,7 +46,7 @@ export class FetchLicenseService implements LicensePort {
 
   async getLicenses(customerId: string): Promise<UpstreamResult<LicenseState>> {
     const result = await this.fetcher.fetchLicenseState(
-      `/api/v1/licenses?customerId=${encodeURIComponent(customerId)}`,
+      `/service/v1/customers/${encodeURIComponent(customerId)}/licenses`,
     );
     if (result.ok) return result;
     if (result.error.code === 'missing_binding') {
@@ -50,19 +56,7 @@ export class FetchLicenseService implements LicensePort {
   }
 
   async getLicense(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseRecord>> {
-    // We fetch all licenses to reuse the FetchOperatorService validation for MVP
-    const result = await this.getLicenses(customerId);
-    if (!result.ok) return result;
-    const license = result.value.licenses.find(l => l.id === licenseId);
-    if (!license) return { ok: false, error: { code: 'not_implemented', detail: 'License not found' } };
-    return { ok: true, value: license };
-  }
-
-  async downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<string>> {
-    if (!this.binding && !this.urlOverride) {
-      return { ok: false, error: { code: 'missing_binding', detail: 'License service binding is not configured.' } };
-    }
-    const path = `/api/v1/licenses/${encodeURIComponent(licenseId)}/document?customerId=${encodeURIComponent(customerId)}`;
+    const path = `/service/v1/customers/${encodeURIComponent(customerId)}/licenses/${encodeURIComponent(licenseId)}`;
     const requestUrl = this.binding
       ? `https://license-service${path}`
       : `${this.urlOverride}${path}`;
@@ -75,10 +69,42 @@ export class FetchLicenseService implements LicensePort {
         ? await this.binding.fetch(requestUrl, { headers })
         : await fetch(requestUrl, { headers });
 
-      if (!response.ok) {
-        return { ok: false, error: { code: 'not_implemented', detail: 'upstream error' } };
+      if (response.status === 404) return { ok: false, error: { code: 'not_implemented', detail: 'License not found' } };
+      if (response.status === 401 || response.status === 403) return { ok: false, error: { code: 'unreachable', detail: 'upstream auth error' } };
+      if (!response.ok) return { ok: false, error: { code: 'unreachable', detail: 'upstream error' } };
+
+      const data = await response.json() as LicenseRecord;
+      return { ok: true, value: data };
+    } catch {
+      return { ok: false, error: { code: 'unreachable', detail: 'upstream unreachable' } };
+    }
+  }
+
+  async downloadLicenseDocument(customerId: string, licenseId: string): Promise<UpstreamResult<LicenseDocumentResult>> {
+    if (!this.binding && !this.urlOverride) {
+      return { ok: false, error: { code: 'missing_binding', detail: 'License service binding is not configured.' } };
+    }
+    const path = `/service/v1/customers/${encodeURIComponent(customerId)}/licenses/${encodeURIComponent(licenseId)}/document`;
+    const requestUrl = this.binding
+      ? `https://license-service${path}`
+      : `${this.urlOverride}${path}`;
+    try {
+      const headers = new Headers();
+      if (this.token) {
+        headers.set('Authorization', `Bearer ${this.token}`);
       }
-      return { ok: true, value: await response.text() };
+      const response = this.binding
+        ? await this.binding.fetch(requestUrl, { headers })
+        : await fetch(requestUrl, { headers });
+
+      if (response.status === 404) return { ok: false, error: { code: 'not_implemented', detail: 'Document not found' } };
+      if (response.status === 401 || response.status === 403) return { ok: false, error: { code: 'unreachable', detail: 'upstream auth error' } };
+      if (!response.ok) return { ok: false, error: { code: 'unreachable', detail: 'upstream error' } };
+
+      const body = await response.arrayBuffer();
+      const contentType = response.headers.get('content-type');
+      const contentDisposition = response.headers.get('content-disposition');
+      return { ok: true, value: { body, contentType, contentDisposition } };
     } catch {
       return { ok: false, error: { code: 'unreachable', detail: 'upstream unreachable' } };
     }
