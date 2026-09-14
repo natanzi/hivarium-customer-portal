@@ -299,6 +299,56 @@ describe('request lifecycle', () => {
     expect(second.status).toBe(409);
   });
 
+  it('creates exactly one request under a true concurrent duplicate race', async () => {
+    const key = randomIdempotencyKey();
+    const body = {
+      requestType: 'capacity_increase',
+      payload: { desiredCapacity: 9 },
+      idempotencyKey: key,
+    };
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        sessionRequest(app.app, app.env, adminToken(), '/api/v1/requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      ),
+    );
+    const statuses = results.map((r) => r.status).sort();
+    // Exactly one winner; the rest replay the original response.
+    expect(statuses.filter((s) => s === 201).length).toBe(1);
+    expect(statuses.filter((s) => s === 200).length).toBe(4);
+
+    const bodies = await Promise.all(results.map(jsonBody));
+    const ids = new Set(bodies.map((b) => (b as { request?: { id: string } }).request?.id ?? ''));
+    expect(ids.size).toBe(1);
+
+    const count = await app.harness.db
+      .prepare(`SELECT COUNT(*) AS n FROM customer_requests WHERE idempotency_key = ?1`)
+      .bind(key)
+      .first<{ n: number }>();
+    expect(count?.n).toBe(1);
+    const events = await app.harness.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM customer_request_events e
+         JOIN customer_requests r ON r.id = e.request_id
+         WHERE r.idempotency_key = ?1`,
+      )
+      .bind(key)
+      .first<{ n: number }>();
+    expect(events?.n).toBe(1);
+    const audit = await app.harness.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM portal_audit_log a
+         JOIN customer_requests r ON r.id = a.target_id
+         WHERE r.idempotency_key = ?1`,
+      )
+      .bind(key)
+      .first<{ n: number }>();
+    expect(audit?.n).toBe(1);
+  });
+
   it('rejects invalid state transitions (cancelling an approved request)', async () => {
     const response = await sessionRequest(app.app, app.env, adminToken(), '/api/v1/requests/req-acme-approved-001/cancel', { method: 'POST' });
     expect(response.status).toBe(409);

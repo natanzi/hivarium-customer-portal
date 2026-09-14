@@ -122,9 +122,16 @@ export interface CreateRequestInput {
 
 /**
  * Creates a request, its initial `created` event, an audit record and an
- * idempotency record in one atomic batch. Duplicate keys with an identical
- * payload replay the original response; duplicate keys with a different
- * payload yield a conflict.
+ * idempotency record. Duplicate keys with an identical payload replay the
+ * original response; duplicate keys with a different payload yield a
+ * conflict.
+ *
+ * Concurrency note: the idempotency record is claimed with its own
+ * INSERT OR IGNORE BEFORE the request/event/audit batch. D1 batches do not
+ * abort when an OR IGNORE statement matches (0 changes is not a failure), so
+ * bundling the claim inside the same batch as the inserts would duplicate the
+ * request row under a true concurrent race. Claiming first keeps exactly one
+ * writer; losers resolve to replay/conflict.
  */
 export async function createRequest(
   db: D1Database,
@@ -158,36 +165,51 @@ export async function createRequest(
     .first<{ request_hash: string; response_status: number; response_body_json: string }>();
 
   if (existing) {
-    if (existing.request_hash !== requestHash) return { outcome: 'conflict' };
-    const request = await getRequestById(db, input.customerId, parseStoredRequestId(existing.response_body_json));
-    if (request) return { outcome: 'replayed', request };
-    // Stored response references a request we cannot find: treat as conflict-safe
-    // and fail closed rather than fabricating a new record.
-    return { outcome: 'conflict' };
+    return resolveExisting(db, input.customerId, operation, input.idempotencyKey, requestHash, existing.response_body_json);
   }
 
   const id = newId('req');
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS).toISOString();
   const responseBody = JSON.stringify({ requestId: id });
 
-  const batch = [
-    db
+  // Claim the idempotency slot. Exactly one concurrent writer wins.
+  const claim = await db
+    .prepare(
+      `INSERT OR IGNORE INTO idempotency_records
+        (id, customer_id, operation, idempotency_key, request_hash, response_status, response_body_json, created_at, expires_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+    )
+    .bind(
+      newId('idem'),
+      input.customerId,
+      operation,
+      input.idempotencyKey,
+      requestHash,
+      201,
+      responseBody,
+      now,
+      expiresAt,
+    )
+    .run();
+
+  if (claim.meta.changes === 0) {
+    // Lost the race: the winner's record now exists; resolve against it.
+    const winner = await db
       .prepare(
-        `INSERT OR IGNORE INTO idempotency_records
-          (id, customer_id, operation, idempotency_key, request_hash, response_status, response_body_json, created_at, expires_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+        `SELECT request_hash, response_body_json
+         FROM idempotency_records
+         WHERE customer_id = ?1 AND operation = ?2 AND idempotency_key = ?3`,
       )
-      .bind(
-        newId('idem'),
-        input.customerId,
-        operation,
-        input.idempotencyKey,
-        requestHash,
-        201,
-        responseBody,
-        now,
-        expiresAt,
-      ),
+      .bind(input.customerId, operation, input.idempotencyKey)
+      .first<{ request_hash: string; response_body_json: string }>();
+    if (!winner || winner.request_hash !== requestHash) return { outcome: 'conflict' };
+    return resolveExisting(db, input.customerId, operation, input.idempotencyKey, requestHash, winner.response_body_json);
+  }
+
+  // We own the slot: request, initial event and audit land in one atomic
+  // batch. If the batch fails, the claim remains and later replays resolve
+  // to a safe conflict rather than fabricating a second request.
+  await db.batch([
     db
       .prepare(
         `INSERT INTO customer_requests
@@ -237,30 +259,35 @@ export async function createRequest(
         input.correlationId,
         now,
       ),
-  ];
-
-  const results = await db.batch(batch);
-  const idempotencyInserted = results[0].meta.changes > 0;
-
-  if (!idempotencyInserted) {
-    // Lost race: another request with the same key committed first.
-    const winner = await db
-      .prepare(
-        `SELECT request_hash, response_body_json
-         FROM idempotency_records
-         WHERE customer_id = ?1 AND operation = ?2 AND idempotency_key = ?3`,
-      )
-      .bind(input.customerId, operation, input.idempotencyKey)
-      .first<{ request_hash: string; response_body_json: string }>();
-    if (!winner || winner.request_hash !== requestHash) return { outcome: 'conflict' };
-    const request = await getRequestById(db, input.customerId, parseStoredRequestId(winner.response_body_json));
-    if (request) return { outcome: 'replayed', request };
-    return { outcome: 'conflict' };
-  }
+  ]);
 
   const request = await getRequestById(db, input.customerId, id);
   if (!request) return { outcome: 'conflict' };
   return { outcome: 'created', request };
+}
+
+async function resolveExisting(
+  db: D1Database,
+  customerId: string,
+  operation: string,
+  idempotencyKey: string,
+  requestHash: string,
+  responseBody: string,
+): Promise<CreateRequestOutcome> {
+  const stored = await db
+    .prepare(
+      `SELECT request_hash, response_body_json
+       FROM idempotency_records
+       WHERE customer_id = ?1 AND operation = ?2 AND idempotency_key = ?3`,
+    )
+    .bind(customerId, operation, idempotencyKey)
+    .first<{ request_hash: string; response_body_json: string }>();
+  if (!stored || stored.request_hash !== requestHash) return { outcome: 'conflict' };
+  const request = await getRequestById(db, customerId, parseStoredRequestId(responseBody));
+  if (request) return { outcome: 'replayed', request };
+  // Stored response references a request we cannot find (e.g. the claiming
+  // writer crashed mid-batch): fail closed rather than fabricate a record.
+  return { outcome: 'conflict' };
 }
 
 function parseStoredRequestId(body: string): string {
