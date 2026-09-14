@@ -655,6 +655,63 @@ button, select, input, textarea { font: inherit; color: inherit; }
 .standalone-card p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
 
 /* --------------------------------------------------------------------------
+   Requests list / timeline / pager
+   -------------------------------------------------------------------------- */
+
+.request-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+
+.request-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  min-height: 52px;
+}
+
+.request-row:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.request-main { display: grid; gap: 3px; min-width: 0; }
+.request-title { font-weight: 600; color: var(--ink-strong); font-size: 14.5px; }
+.request-meta { color: var(--faint); font-size: 12.5px; }
+
+.pager { display: flex; align-items: center; gap: 14px; justify-content: flex-end; }
+.pager-current { color: var(--muted); font-size: 13px; font-weight: 600; }
+
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.timeline-item { display: grid; grid-template-columns: 18px 1fr; gap: 12px; padding: 12px 0; position: relative; }
+.timeline-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 26px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--line);
+}
+.timeline-marker {
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+  justify-self: start;
+}
+.timeline-heading { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink-strong); }
+.timeline-meta { margin: 2px 0 0; color: var(--faint); font-size: 12px; }
+.timeline-text { margin: 6px 0 0; font-size: 14px; color: var(--ink); }
+
+@media (max-width: 640px) {
+  .request-row { padding: 12px 14px; }
+  .timeline-item { grid-template-columns: 14px 1fr; }
+}
+
+/* --------------------------------------------------------------------------
    Responsive
    -------------------------------------------------------------------------- */
 

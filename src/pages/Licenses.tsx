@@ -89,7 +89,7 @@ export default function Licenses() {
       title="Licenses & deployments"
       description="Signed licenses issued for your organization and where they are deployed. Validation secrets are never shown here."
       actions={
-        <LinkButton to="/requests/new?type=license_support" variant="secondary" className="hide-on-mobile">
+        <LinkButton to="/requests/new?type=license_support" variant="secondary" >
           License support
         </LinkButton>
       }

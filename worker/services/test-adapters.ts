@@ -181,7 +181,7 @@ export class MemoryOperatorService implements OperatorPort {
         netTokensConsumed: 750,
         rows: [
           {
-            transactionId: 'tx-0007',
+            transactionId: 'tx-0006',
             occurredAt: '2026-08-28T09:15:00.000Z',
             kind: 'usage',
             amountTokens: -120,
@@ -192,35 +192,24 @@ export class MemoryOperatorService implements OperatorPort {
             agentName: 'Threat Surface Scanner',
           },
           {
-            transactionId: 'tx-0006',
+            transactionId: 'tx-0005',
             occurredAt: '2026-08-14T11:00:00.000Z',
             kind: 'usage',
             amountTokens: -80,
             runningBalanceTokens: 4_370,
             reference: 'agent-relay-001',
-            reason: 'Relay relay batch',
+            reason: 'Relay batch',
             agentProductId: 'agent-relay-001',
             agentName: 'Signal Relay Agent',
-          },
-          {
-            transactionId: 'tx-0005',
-            occurredAt: '2026-08-01T08:00:00.000Z',
-            kind: 'credit_grant',
-            amountTokens: 4_500,
-            runningBalanceTokens: 4_450,
-            reference: 'HV-ACME-2026-001',
-            reason: 'Annual prepaid credit',
-            agentProductId: null,
-            agentName: null,
           },
           {
             transactionId: 'tx-0004',
             occurredAt: '2026-07-20T14:00:00.000Z',
             kind: 'usage',
             amountTokens: -550,
-            runningBalanceTokens: -50,
+            runningBalanceTokens: 4_450,
             reference: 'agent-scan-001',
-            reason: 'Large scan run',
+            reason: 'Corrected scan run',
             agentProductId: 'agent-scan-001',
             agentName: 'Threat Surface Scanner',
           },
@@ -228,10 +217,32 @@ export class MemoryOperatorService implements OperatorPort {
             transactionId: 'tx-0003',
             occurredAt: '2026-07-19T10:00:00.000Z',
             kind: 'reversal',
-            amountTokens: 550,
-            runningBalanceTokens: 500,
-            reference: 'tx-0004',
+            amountTokens: 200,
+            runningBalanceTokens: 5_000,
+            reference: 'tx-0002',
             reason: 'Operator reversal of duplicate charge',
+            agentProductId: null,
+            agentName: null,
+          },
+          {
+            transactionId: 'tx-0002',
+            occurredAt: '2026-07-10T09:00:00.000Z',
+            kind: 'usage',
+            amountTokens: -200,
+            runningBalanceTokens: 4_800,
+            reference: 'agent-scan-001',
+            reason: 'Scan batch 2026-07-10',
+            agentProductId: 'agent-scan-001',
+            agentName: 'Threat Surface Scanner',
+          },
+          {
+            transactionId: 'tx-0001',
+            occurredAt: '2026-07-01T08:00:00.000Z',
+            kind: 'credit_grant',
+            amountTokens: 5_000,
+            runningBalanceTokens: 5_000,
+            reference: 'HV-ACME-2026-001',
+            reason: 'Annual prepaid credit',
             agentProductId: null,
             agentName: null,
           },
@@ -240,7 +251,7 @@ export class MemoryOperatorService implements OperatorPort {
     };
   }
 
-  async getUsageSummary(): Promise<UpstreamResult<UsageSummary>> {
+async getUsageSummary(): Promise<UpstreamResult<UsageSummary>> {
     const failed = this.maybeFail('usage-summary');
     if (failed) return failed;
     return {

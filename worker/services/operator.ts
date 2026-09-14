@@ -316,12 +316,17 @@ function validateLedgerState(value: unknown): { ok: true; value: unknown } | { o
       agentName: asString(row.agentName) ?? null,
     };
   });
+  const typedRows = rows.filter(Boolean);
+  // Prefer the authoritative top-level balance when the upstream provides it;
+  // otherwise use the running balance of the most recent ledger entry.
+  const explicitBalance = asNumber(record.balanceTokens);
+  const lastRow = typedRows[typedRows.length - 1];
   return {
     ok: true,
     value: {
       customerId: asString(record.customerId) ?? '',
-      rows: rows.filter(Boolean),
-      balanceTokens: rows.filter(Boolean).length ? rows.filter(Boolean)[rows.filter(Boolean).length - 1]!.runningBalanceTokens : 0,
+      rows: typedRows,
+      balanceTokens: explicitBalance ?? lastRow?.runningBalanceTokens ?? 0,
       netTokensConsumed: asNumber(record.netTokensConsumed) ?? 0,
     },
   };

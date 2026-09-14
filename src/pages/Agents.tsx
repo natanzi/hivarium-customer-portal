@@ -64,7 +64,7 @@ export default function Agents() {
       title="Agents"
       description="The Hivarium agents your organization is permitted to use. Access is granted by Hivarium operators — this portal only shows what is authorized."
       actions={
-        <LinkButton to="/requests/new?type=agent_access" className="hide-on-mobile">
+        <LinkButton to="/requests/new?type=agent_access" >
           Request agent access
         </LinkButton>
       }

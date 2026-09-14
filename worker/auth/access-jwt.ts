@@ -81,7 +81,9 @@ export class CertKeyProvider implements KeyProvider {
 
   constructor(
     private readonly certsUrl: string,
-    private readonly fetcher: typeof fetch = fetch,
+    // Arrow closure: calling the global fetch through an instance property
+    // otherwise breaks its `this` binding inside workerd.
+    private readonly fetcher: typeof fetch = (...args) => fetch(...args),
   ) {}
 
   async getKeys(): Promise<JwkRsaKey[]> {
@@ -90,7 +92,7 @@ export class CertKeyProvider implements KeyProvider {
       return this.cache.keys;
     }
     try {
-      const response = await this.fetcher(this.certsUrl, { cf: { cacheTtl: 300 } });
+      const response = await this.fetcher(this.certsUrl);
       if (!response.ok) throw new Error(`certs endpoint returned ${response.status}`);
       const body = (await response.json()) as { keys?: JwkRsaKey[] };
       if (!Array.isArray(body.keys) || body.keys.length === 0) {
@@ -199,7 +201,9 @@ export async function verifyAccessJwt(
       keys = await keyProvider.refetch();
       key = keys.find((k) => k.kid === header.kid);
     }
-    if (!key) throw new JwtVerificationError('unknown_key', 'Signing key is unknown.');
+    if (!key) {
+      throw new JwtVerificationError('unknown_key', 'Signing key is unknown.');
+    }
   }
 
   const signingInput = `${parts[0]}.${parts[1]}`;

@@ -6,7 +6,7 @@ import type { SessionAccountStatus } from '../../shared/types';
 
 const session: SessionAccountStatus = {
   auth: 'session',
-  user: { email: 'dev.admin@acme.example', displayName: 'Dev Admin', role: 'customer_admin' },
+  user: { membershipId: 'mbr-acme-admin-001', email: 'dev.admin@acme.example', displayName: 'Dev Admin', role: 'customer_admin' },
   organization: { customerId: 'acme-dev-001', name: 'Acme Instruments' },
   capabilities: { requestTypes: ['renewal'], canCancel: true, canComment: true },
   signOutUrl: '/cdn-cgi/access/logout',

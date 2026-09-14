@@ -7,7 +7,9 @@ import Subscription from './pages/Subscription';
 import Agents from './pages/Agents';
 import Licenses from './pages/Licenses';
 import Usage from './pages/Usage';
-import RequestsPlaceholder from './pages/RequestsPlaceholder';
+import Requests from './pages/Requests';
+import RequestNew from './pages/RequestNew';
+import RequestDetail from './pages/RequestDetail';
 import Account from './pages/Account';
 import Unauthorized from './pages/Unauthorized';
 import ServiceUnavailable from './pages/ServiceUnavailable';
@@ -41,7 +43,9 @@ function Gate() {
           <Route path="/agents" element={<Agents />} />
           <Route path="/licenses" element={<Licenses />} />
           <Route path="/usage" element={<Usage />} />
-          <Route path="/requests" element={<RequestsPlaceholder />} />
+          <Route path="/requests" element={<Requests />} />
+          <Route path="/requests/new" element={<RequestNew />} />
+          <Route path="/requests/:requestId" element={<RequestDetail />} />
           <Route path="/account" element={<Account />} />
         </Route>
         <Route path="*" element={<Navigate to="/overview" replace />} />

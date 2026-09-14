@@ -74,6 +74,7 @@ export async function handleAccountStatus(ctx: HandlerContext): Promise<AccountS
   const status: SessionAccountStatus = {
     auth: 'session',
     user: {
+      membershipId: ctx.identity.membership.id,
       email: ctx.identity.membership.emailNormalized,
       displayName: ctx.identity.membership.displayName || ctx.identity.membership.emailNormalized,
       role: ctx.identity.role,

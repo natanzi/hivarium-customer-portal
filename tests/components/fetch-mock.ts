@@ -23,9 +23,10 @@ export function installFetchMock(routes: Record<string, RouteHandler>): void {
           : input instanceof URL
             ? input
             : new URL(input.url);
-      const route = routes[url.pathname];
+      const key = `${url.pathname}${url.search}`;
+      const route = routes[key];
       if (!route) {
-        throw new Error(`No fetch mock registered for ${url.pathname}`);
+        throw new Error(`No fetch mock registered for ${key}`);
       }
       const result = await route(init ?? {});
       return new Response(JSON.stringify(result.body), {

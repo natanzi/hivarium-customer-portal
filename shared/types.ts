@@ -289,7 +289,7 @@ export interface ServiceAvailability {
 
 export interface SessionAccountStatus {
   auth: 'session';
-  user: { email: string; displayName: string; role: PortalRole };
+  user: { membershipId: string; email: string; displayName: string; role: PortalRole };
   organization: { customerId: string; name: string | null };
   capabilities: Capabilities;
   signOutUrl: string;

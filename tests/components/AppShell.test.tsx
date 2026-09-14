@@ -7,7 +7,7 @@ import type { SessionAccountStatus } from '../../shared/types';
 
 const session: SessionAccountStatus = {
   auth: 'session',
-  user: { email: 'dev.admin@acme.example', displayName: 'Dev Admin', role: 'customer_admin' },
+  user: { membershipId: 'mbr-acme-admin-001', email: 'dev.admin@acme.example', displayName: 'Dev Admin', role: 'customer_admin' },
   organization: { customerId: 'acme-dev-001', name: 'Acme Instruments' },
   capabilities: { requestTypes: ['renewal', 'agent_access'], canCancel: true, canComment: true },
   signOutUrl: '/cdn-cgi/access/logout',
@@ -44,7 +44,7 @@ describe('AppShell', () => {
   });
 
   it('hides New request for read-only roles', () => {
-    renderShell({ user: { email: 'dev.readonly@acme.example', displayName: 'Dev Read-Only', role: 'read_only' }, capabilities: { requestTypes: [], canCancel: false, canComment: false } });
+    renderShell({ user: { membershipId: 'mbr-acme-readonly-001', email: 'dev.readonly@acme.example', displayName: 'Dev Read-Only', role: 'read_only' }, capabilities: { requestTypes: [], canCancel: false, canComment: false } });
     expect(screen.queryByRole('link', { name: 'New request' })).not.toBeInTheDocument();
   });
 
