@@ -390,6 +390,33 @@ describe('request lifecycle', () => {
     expect(response.status).toBe(403);
   });
 
+  it('blocks read_only from cancelling even their own request', async () => {
+    // read_only cannot submit, so fabricate a request they "own" directly.
+    await app.harness.db
+      .prepare(
+        `INSERT INTO customer_requests
+          (id, customer_id, requested_by_membership_id, request_type, status, title, reason,
+           structured_payload_json, idempotency_key, created_at, updated_at)
+         VALUES ('req-readonly-own-001', 'acme-dev-001', 'mbr-acme-readonly-001', 'general_support', 'submitted',
+                 'Own request', '', '{}', 'seed-readonly-own', '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')`,
+      )
+      .run();
+    const response = await sessionRequest(app.app, app.env, readonlyToken(), '/api/v1/requests/req-readonly-own-001/cancel', { method: 'POST' });
+    expect(response.status).toBe(403);
+  });
+
+  it('lets a technical_operator cancel their own submitted request', async () => {
+    const key = randomIdempotencyKey();
+    const created = await sessionRequest(app.app, app.env, techToken(), '/api/v1/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: 'general_support', payload: { description: 'Cancel me.' }, idempotencyKey: key }),
+    });
+    const requestId = (await jsonBody(created) as { request: { id: string } }).request.id;
+    const cancel = await sessionRequest(app.app, app.env, techToken(), `/api/v1/requests/${requestId}/cancel`, { method: 'POST' });
+    expect(cancel.status).toBe(200);
+  });
+
   it('keeps request history append-only', async () => {
     const before = await listRequestEvents(app.harness.db, 'acme-dev-001', 'req-acme-submitted-001');
     const comment = await sessionRequest(app.app, app.env, adminToken(), '/api/v1/requests/req-acme-submitted-001/comments', {

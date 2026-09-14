@@ -36,7 +36,7 @@ import { validateComment, validateCreateRequest } from './validation';
 import type { OperatorPort, UpstreamError } from '../services/operator';
 import type { LicensePort } from '../services/license';
 import type { PortalIdentity } from '../auth/context';
-import { canCancelRequests, canCommentOnRequests, canSubmitRequestType } from '../auth/roles';
+import { canCancelOwnRequests, canCancelRequests, canCommentOnRequests, canSubmitRequestType } from '../auth/roles';
 import type { RequestStatus } from '../../shared/types';
 
 export interface HandlerContext {
@@ -352,7 +352,8 @@ export async function handleCancelRequest(
     throw new ApiError(404, 'not_found', 'Request not found.');
   }
   const isRequester = existing.requestedBy.membershipId === identity.membership.id;
-  if (!canCancelRequests(identity.role) && !isRequester) {
+  const mayCancel = canCancelRequests(identity.role) || (canCancelOwnRequests(identity.role) && isRequester);
+  if (!mayCancel) {
     throw new ApiError(403, 'forbidden', 'You are not allowed to cancel this request.');
   }
 

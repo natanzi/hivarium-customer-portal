@@ -19,6 +19,8 @@ const REQUEST_TYPE_ROLES: Record<RequestType, readonly PortalRole[]> = {
 };
 
 const CAN_CANCEL_ROLES: readonly PortalRole[] = ['customer_admin'];
+/** Roles that may cancel requests they personally submitted. */
+const CAN_CANCEL_OWN_ROLES: readonly PortalRole[] = ['customer_admin', 'billing_viewer', 'technical_operator'];
 const CAN_COMMENT_ROLES: readonly PortalRole[] = [
   'customer_admin',
   'billing_viewer',
@@ -31,6 +33,11 @@ export function canSubmitRequestType(role: PortalRole, requestType: RequestType)
 
 export function canCancelRequests(role: PortalRole): boolean {
   return CAN_CANCEL_ROLES.includes(role);
+}
+
+/** Whether the role may cancel a request it submitted itself (never read_only). */
+export function canCancelOwnRequests(role: PortalRole): boolean {
+  return CAN_CANCEL_OWN_ROLES.includes(role);
 }
 
 export function canCommentOnRequests(role: PortalRole): boolean {

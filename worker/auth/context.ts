@@ -102,12 +102,21 @@ async function resolveMachineIdentity(
     return { ok: false, failure: { kind: 'invalid_credentials' } };
   }
   const scopes = client.allowedScopes;
+  // Machine capabilities are derived from scopes, never from a human role:
+  // machine clients can submit request types when they hold requests:write,
+  // and can never cancel or comment (handlers enforce this independently).
   const identity: MachineIdentity = {
     kind: 'machine',
     client,
     customerId: client.customerId,
     scopes,
-    capabilities: capabilitiesFor('customer_admin'),
+    capabilities: {
+      requestTypes: scopes.includes('requests:write')
+        ? ['renewal', 'capacity_increase', 'prepaid_credit', 'agent_access', 'license_support', 'deployment_support', 'general_support']
+        : [],
+      canCancel: false,
+      canComment: false,
+    },
   };
   // Fire-and-forget usage tracking; failures never break the request.
   void touchClientLastUsed(db, client.id).catch(() => undefined);
