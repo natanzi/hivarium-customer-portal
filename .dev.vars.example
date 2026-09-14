@@ -1,0 +1,2 @@
+# Local development placeholders only. Never commit real credentials.
+ENVIRONMENT="development"

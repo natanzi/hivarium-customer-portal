@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hivarium-customer-portal",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-13",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "PORTAL_DB",
+      "database_name": "hivarium-customer-portal",
+      "database_id": "92f5fed1-be18-4f82-8ac9-ae217a0789fe"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "production"
+  }
+}
