@@ -1,31 +1,79 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { SessionProvider, useSession } from './session';
+import AppShell from './components/AppShell';
+import { LoadingState } from './components/ui';
+import Overview from './pages/Overview';
+import Subscription from './pages/Subscription';
+import Agents from './pages/Agents';
+import Licenses from './pages/Licenses';
+import Usage from './pages/Usage';
+import RequestsPlaceholder from './pages/RequestsPlaceholder';
+import Account from './pages/Account';
+import Unauthorized from './pages/Unauthorized';
+import ServiceUnavailable from './pages/ServiceUnavailable';
+
+/**
+ * The gate owns routing for every session state. Public pages always render;
+ * protected pages render only for a verified session, and any other URL
+ * redirects to the correct state page. This guarantees the app never stalls
+ * on a loading/redirect hop regardless of the entry URL.
+ */
+function Gate() {
+  const sessionState = useSession();
+
+  if (sessionState.status === 'loading') {
+    return (
+      <div className="full-screen-state">
+        <LoadingState label="Checking your session…" />
+      </div>
+    );
+  }
+
+  if (sessionState.status === 'ready') {
+    return (
+      <Routes>
+        <Route path="/unauthorized" element={<Unauthorized />} />
+        <Route path="/service-unavailable" element={<ServiceUnavailable />} />
+        <Route element={<AppShell session={sessionState.session} />}>
+          <Route path="/" element={<Navigate to="/overview" replace />} />
+          <Route path="/overview" element={<Overview />} />
+          <Route path="/subscription" element={<Subscription />} />
+          <Route path="/agents" element={<Agents />} />
+          <Route path="/licenses" element={<Licenses />} />
+          <Route path="/usage" element={<Usage />} />
+          <Route path="/requests" element={<RequestsPlaceholder />} />
+          <Route path="/account" element={<Account />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/overview" replace />} />
+      </Routes>
+    );
+  }
+
+  if (sessionState.status === 'unauthorized') {
+    return (
+      <Routes>
+        <Route path="/unauthorized" element={<Unauthorized />} />
+        <Route path="/service-unavailable" element={<ServiceUnavailable />} />
+        <Route path="*" element={<Navigate to="/unauthorized" replace />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/unauthorized" element={<Unauthorized />} />
+      <Route path="/service-unavailable" element={<ServiceUnavailable />} />
+      <Route path="*" element={<Navigate to="/service-unavailable" replace />} />
+    </Routes>
+  );
+}
+
 export default function App() {
   return (
-    <div className="portal-shell">
-      <header className="portal-header">
-        <a className="brand" href="/" aria-label="Hivarium Customer Portal home">
-          <span className="brand-mark" aria-hidden="true">H</span>
-          <span>
-            <strong>Hivarium</strong>
-            <small>Customer Portal</small>
-          </span>
-        </a>
-      </header>
-
-      <main className="portal-main">
-        <p className="eyebrow">Customer workspace foundation</p>
-        <h1>Your Hivarium relationship, in one place.</h1>
-        <p className="lede">
-          The secure portal for subscription details, agent access, license status,
-          usage, and service requests is being prepared.
-        </p>
-        <section className="status-card" aria-labelledby="foundation-status">
-          <div>
-            <p className="card-label">Environment</p>
-            <h2 id="foundation-status">Foundation ready</h2>
-          </div>
-          <span className="status-pill">Private preview</span>
-        </section>
-      </main>
-    </div>
+    <SessionProvider>
+      <BrowserRouter>
+        <Gate />
+      </BrowserRouter>
+    </SessionProvider>
   );
 }

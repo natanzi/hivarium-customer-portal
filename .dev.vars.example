@@ -1,2 +1,23 @@
 # Local development placeholders only. Never commit real credentials.
+# Copy to .dev.vars for local `wrangler dev` runs and fill in your own
+# throwaway values. Production values come from Cloudflare secrets; nothing
+# here is used by the deployed Worker.
 ENVIRONMENT="development"
+
+# Cloudflare Access team domain (e.g. "your-team.cloudflareaccess.com").
+# Production: set as a secret; must be set or the portal fails closed.
+ACCESS_TEAM_DOMAIN="your-team.cloudflareaccess.com"
+
+# Cloudflare Access application audience (the Access "AUD" tag). Production:
+# set as a secret; must be set or the portal fails closed.
+ACCESS_AUD="00000000-0000-0000-0000-000000000000"
+
+# Optional: override the certs URL used to verify Access JWTs. Useful when a
+# local E2E harness serves its own signing keys. Never set in production.
+# ACCESS_CERTS_URL="http://127.0.0.1:8789/certs"
+
+# Local-only URL overrides for the Operator Console and License Service when
+# running `wrangler dev` against local stub services. Never set in production;
+# production uses the OPERATOR_SERVICE / LICENSE_SERVICE service bindings.
+# OPERATOR_SERVICE_URL="http://127.0.0.1:8789/operator"
+# LICENSE_SERVICE_URL="http://127.0.0.1:8789/license"
