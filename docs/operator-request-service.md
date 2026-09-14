@@ -55,7 +55,7 @@ Ordering is `created_at DESC, id DESC`. The response is:
     {
       "requestId": "req-…",
       "customerId": "…",
-      "requestType": "renewal",
+      "requestType": "license_renewal",
       "status": "submitted",
       "summary": "…",
       "submittedBy": { "displayName": "…", "email": "…" },
@@ -68,6 +68,10 @@ Ordering is `created_at DESC, id DESC`. The response is:
 ```
 
 List items never include secrets, hashes, operator notes, or idempotency keys.
+
+External `/service/v1` responses always use canonical integration values
+(`license_renewal`, not the internal D1 name `renewal`). Internal storage
+still uses `renewal`; translation happens only at this boundary.
 
 ### `GET /service/v1/requests/:requestId`
 
