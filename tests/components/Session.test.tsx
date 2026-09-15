@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import App from '../../src/App';
 import { installFetchMock, ok, failed, deferred } from './fetch-mock';
 import type { SessionAccountStatus } from '../../shared/types';
@@ -34,10 +35,55 @@ describe('session guard', () => {
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
   });
 
-  it('redirects to /unauthorized when the session cannot be verified', async () => {
+  it('shows first-party sign in when the session cannot be verified', async () => {
     installFetchMock({ '/api/v1/account/status': failed(401, 'unauthorized', 'Sign-in required.') });
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Not authorized' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in to your portal' })).toBeInTheDocument();
+  });
+
+  it('submits a normalized email and shows an enumeration-safe result', async () => {
+    let requestBody: unknown;
+    installFetchMock({
+      '/api/v1/account/status': failed(401, 'unauthorized', 'Sign-in required.'),
+      '/api/auth/magic-link': async (init) => {
+        requestBody = JSON.parse(String(init.body));
+        return { status: 202, body: { message: 'ignored server copy' } };
+      },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByLabelText('Work email'), '  Customer@Example.com  ');
+    await user.click(screen.getByRole('button', { name: 'Email me a sign-in link' }));
+    expect(requestBody).toEqual({ email: 'customer@example.com' });
+    expect(await screen.findByText('If an active portal account exists for that email, a sign-in link is on its way.')).toBeInTheDocument();
+    expect(screen.getByText(/expires in 10 minutes/i)).toBeInTheDocument();
+  });
+
+  it('shows a safe warning for an invalid or expired link', async () => {
+    window.history.pushState({}, '', '/login?error=invalid_link');
+    installFetchMock({ '/api/v1/account/status': failed(401, 'unauthorized', 'Sign-in required.') });
+    render(<App />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/invalid, expired, or has already been used/i);
+  });
+
+  it('requires customer confirmation before POSTing the fragment token', async () => {
+    const token = 'a'.repeat(64);
+    let requestBody: unknown;
+    window.history.pushState({}, '', `/login/verify#token=${token}`);
+    installFetchMock({
+      '/api/v1/account/status': failed(401, 'unauthorized', 'Sign-in required.'),
+      '/api/auth/verify': async (init) => {
+        requestBody = JSON.parse(String(init.body));
+        return { status: 400, body: { error: 'invalid_link' } };
+      },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Continue to your portal' })).toBeInTheDocument();
+    expect(requestBody).toBeUndefined();
+    await user.click(screen.getByRole('button', { name: 'Continue to portal' }));
+    expect(requestBody).toEqual({ token });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/invalid, expired, or has already been used/i);
   });
 
   it('redirects to /service-unavailable when authentication cannot run', async () => {

@@ -30,3 +30,11 @@ ACCESS_AUD="00000000-0000-0000-0000-000000000000"
 # Inbound service authentication (Operator Console → portal).
 # Must match the Operator Console PORTAL_SERVICE_TOKEN secret.
 # OPERATOR_CALLER_TOKEN="placeholder"
+
+# First-party customer magic-link sign-in. The API key is secret in
+# production; sender/base/provider values may be plain Worker variables.
+# EMAIL_PROVIDER_API_KEY="re_placeholder"
+EMAIL_PROVIDER_URL="https://api.resend.com/emails"
+EMAIL_FROM_ADDRESS="Hivarium Access <access@hivarium.dev>"
+EMAIL_REPLY_TO="access@hivarium.dev"
+PORTAL_BASE_URL="https://portal.hivarium.dev"

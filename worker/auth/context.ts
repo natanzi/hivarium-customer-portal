@@ -1,9 +1,12 @@
 /**
  * Identity resolution for every `/api/v1/*` request.
  *
- * Two authenticated actors exist:
- *  - session: a human behind Cloudflare Access, identified by the verified
- *    `Cf-Access-Jwt-Assertion` token (or, only when ENVIRONMENT !==
+ * Three authenticated actors exist:
+ *  - first-party session: a human who completed magic-link sign-in,
+ *    identified by the HttpOnly HV_PORTAL_SESSION cookie, which is resolved
+ *    against PORTAL_DB independently of any Cloudflare Access configuration;
+ *  - Access session: a human behind Cloudflare Access, identified by the
+ *    verified `Cf-Access-Jwt-Assertion` token (or, only when ENVIRONMENT !==
  *    'production', the identically-verified PORTAL_DEV_JWT cookie);
  *  - machine: an external agent presenting a `hv_`-prefixed credential in the
  *    Authorization header, matched against api_clients by SHA-256 hash.
@@ -15,11 +18,17 @@
 
 import type { Capabilities, PortalRole } from '../../shared/types';
 import type { MembershipRow } from '../db/repos/memberships';
-import { findActiveMembershipByEmail, findMembershipAccessStateByEmail } from '../db/repos/memberships';
+import {
+  findActiveMembershipByEmail,
+  findActiveMembershipById,
+  findMembershipAccessStateByEmail,
+} from '../db/repos/memberships';
 import type { ApiClientRow } from '../db/repos/api-clients';
 import { findClientByCredential, touchClientLastUsed } from '../db/repos/api-clients';
+import { resolveSessionToken, touchSession } from '../db/repos/portal-sessions';
 import { capabilitiesFor } from './roles';
 import { CertKeyProvider, JwtVerificationError, verifyAccessJwt, type KeyProvider } from './access-jwt';
+import { SESSION_COOKIE_NAME } from './magic-link-handlers';
 
 export const DEV_JWT_COOKIE_NAME = 'PORTAL_DEV_JWT';
 
@@ -40,6 +49,8 @@ export interface SessionIdentity {
   customerId: string;
   role: PortalRole;
   capabilities: Capabilities;
+  /** How this session was established; drives the sign-out destination. */
+  authSource: 'magic_link' | 'cloudflare_access';
 }
 
 export interface MachineIdentity {
@@ -131,16 +142,29 @@ async function resolveSessionIdentity(
   db: D1Database,
   deps: IdentityDeps,
 ): Promise<{ ok: true; identity: PortalIdentity } | { ok: false; failure: AuthFailure }> {
-  const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_CERTS_URL } = deps.env;
-  if (!ACCESS_TEAM_DOMAIN || !ACCESS_AUD) {
-    return { ok: false, failure: { kind: 'missing_config' } };
+  // First-party magic-link session takes precedence and is fully
+  // self-contained: a valid HV_PORTAL_SESSION must never be rejected because
+  // Cloudflare Access is unconfigured. Only when the cookie is absent or does
+  // not resolve do we fall back to the verified Access JWT path.
+  const sessionToken = readCookie(request, SESSION_COOKIE_NAME);
+  if (sessionToken) {
+    const identity = await resolveFirstPartySession(db, sessionToken, deps);
+    if (identity) return { ok: true, identity };
   }
 
   let token = request.headers.get('Cf-Access-Jwt-Assertion');
   if (!token && deps.env.ENVIRONMENT !== 'production') {
-    token = readDevCookie(request);
+    token = readCookie(request, DEV_JWT_COOKIE_NAME);
   }
   if (!token) return { ok: false, failure: { kind: 'no_token' } };
+
+  // Access is only a compatibility fallback for the customer portal. Its
+  // configuration is required only when an Access token is actually
+  // presented; an ordinary signed-out customer must still reach /login.
+  const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_CERTS_URL } = deps.env;
+  if (!ACCESS_TEAM_DOMAIN || !ACCESS_AUD) {
+    return { ok: false, failure: { kind: 'missing_config' } };
+  }
 
   const keyProvider =
     deps.keyProvider ?? new CertKeyProvider(certsUrlFor(ACCESS_TEAM_DOMAIN, ACCESS_CERTS_URL));
@@ -166,6 +190,7 @@ async function resolveSessionIdentity(
           customerId: membership.customerId,
           role: membership.role,
           capabilities: capabilitiesFor(membership.role),
+          authSource: 'cloudflare_access',
         },
       };
     }
@@ -181,14 +206,62 @@ async function resolveSessionIdentity(
   }
 }
 
-function readDevCookie(request: Request): string | null {
+/**
+ * Resolves a first-party magic-link session cookie to a normal session
+ * identity. The session token row already enforces the customer, active
+ * membership and demo-expiry bounds; the canonical active membership is
+ * re-loaded by its bound (customer, membership) pair so capabilities and the
+ * tenant come from the same server-side row. Any failure returns null so the
+ * caller can fall back to Access or fail closed; no exception escapes.
+ */
+async function resolveFirstPartySession(
+  db: D1Database,
+  sessionToken: string,
+  deps: IdentityDeps,
+): Promise<SessionIdentity | null> {
+  let resolved;
+  try {
+    resolved = await resolveSessionToken(db, sessionToken, deps.now);
+  } catch {
+    return null;
+  }
+  if (!resolved) return null;
+
+  const membership = await findActiveMembershipById(
+    db,
+    resolved.customerId,
+    resolved.membership.id,
+    deps.now,
+  );
+  if (!membership) return null;
+
+  // Opportunistic activity tracking; failures never break the request.
+  void touchSession(db, resolved.session.id).catch(() => undefined);
+
+  return {
+    kind: 'session',
+    email: membership.emailNormalized,
+    membership,
+    customerId: membership.customerId,
+    role: membership.role,
+    capabilities: capabilitiesFor(membership.role),
+    authSource: 'magic_link',
+  };
+}
+
+function readCookie(request: Request, name: string): string | null {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(';')) {
-    const [name, ...rest] = part.trim().split('=');
-    if (name === DEV_JWT_COOKIE_NAME) {
+    const [cookieName, ...rest] = part.trim().split('=');
+    if (cookieName === name) {
       const value = rest.join('=');
-      return value.length > 0 ? value : null;
+      if (value.length === 0) return null;
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
     }
   }
   return null;

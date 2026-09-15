@@ -89,6 +89,33 @@ export async function findMembershipAccessStateByEmail(
   return 'disabled';
 }
 
+/**
+ * Finds the active, unexpired membership for a specific
+ * (customerId, membershipId) pair. First-party sessions already carry the
+ * membership id they were bound to, so this resolves the canonical row
+ * without ever guessing tenancy from an email. Returns null unless the
+ * membership is still `active` and its demo expiry (when set) is ahead.
+ */
+export async function findActiveMembershipById(
+  db: D1Database,
+  customerId: string,
+  membershipId: string,
+  nowMs?: () => number,
+): Promise<MembershipRow | null> {
+  const now = new Date(nowMs ? nowMs() : Date.now()).toISOString();
+  const row = await db
+    .prepare(
+      `SELECT id, customer_id, email_normalized, display_name, role, status, created_at, updated_at, demo_expires_at
+       FROM portal_memberships
+       WHERE id = ?1 AND customer_id = ?2 AND status = 'active'
+         AND (demo_expires_at IS NULL OR demo_expires_at > ?3)
+       LIMIT 1`,
+    )
+    .bind(membershipId, customerId, now)
+    .first<MembershipDbRow>();
+  return row ? mapMembership(row) : null;
+}
+
 export async function findMembershipById(
   db: D1Database,
   customerId: string,

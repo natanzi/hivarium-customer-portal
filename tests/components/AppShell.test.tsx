@@ -116,4 +116,52 @@ describe('AppShell', () => {
       console.error = original;
     }
   });
+
+  describe('first-party magic-link sign-out', () => {
+    it('renders a Sign out button instead of a legacy link', () => {
+      renderShell({ signOutUrl: '/api/auth/logout' });
+      const button = screen.getByRole('button', { name: 'Sign out' });
+      expect(button).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Sign out' })).not.toBeInTheDocument();
+      expect(button).toHaveClass('sign-out');
+    });
+
+    it('POSTs /api/auth/logout with same-origin credentials and accepts JSON', async () => {
+      const assign = vi.fn();
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...window.location, assign },
+      });
+      const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const user = userEvent.setup();
+      renderShell({ signOutUrl: '/api/auth/logout' });
+
+      await user.click(screen.getByRole('button', { name: 'Sign out' }));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe('/api/auth/logout');
+      expect(init?.method).toBe('POST');
+      expect(init?.credentials).toBe('same-origin');
+      expect(new Headers(init?.headers).get('accept')).toBe('application/json');
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('redirects to /login after a non-204 safe outcome without failing sign-out', async () => {
+      const assign = vi.fn();
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...window.location, assign },
+      });
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 500 })));
+      const user = userEvent.setup();
+      renderShell({ signOutUrl: '/api/auth/logout' });
+
+      await user.click(screen.getByRole('button', { name: 'Sign out' }));
+
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'));
+    });
+  });
 });

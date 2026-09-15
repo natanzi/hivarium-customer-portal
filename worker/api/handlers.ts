@@ -86,7 +86,13 @@ export async function handleAccountStatus(ctx: HandlerContext): Promise<AccountS
       name: profile.ok ? profile.value.name : null,
     },
     membershipStatus: ctx.identity.membership.status,
-    signOutUrl: '/cdn-cgi/access/logout',
+    // Sign-out destination depends on how this session was established:
+    // first-party magic-link sessions are revoked via /api/auth/logout
+    // (server-side session deletion + cookie clear); Cloudflare Access
+    // sessions retain the Access-logout path. The verified identity's
+    // authSource is authoritative — a stale HV_PORTAL_SESSION cookie must
+    // never steer an Access-authenticated user to the first-party logout.
+    signOutUrl: ctx.identity.authSource === 'magic_link' ? '/api/auth/logout' : '/cdn-cgi/access/logout',
   };
   return status;
 }

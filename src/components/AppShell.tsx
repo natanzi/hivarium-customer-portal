@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Link, Outlet } from 'react-router';
 import type { SessionAccountStatus } from '../../shared/types';
 import { RoleBadge } from '../role-badge';
+import { SignOut } from './SignOut';
 
 const NAV_ITEMS = [
   { to: '/overview', label: 'Overview' },
@@ -34,9 +35,7 @@ function UserCard({ session, compact = false }: { session: SessionAccountStatus;
       <p className="user-meta">
         {session.organization.name ?? 'Customer account'} · <RoleBadge role={session.user.role} />
       </p>
-      <a className="sign-out" href={session.signOutUrl}>
-        Sign out
-      </a>
+      <SignOut signOutUrl={session.signOutUrl} className="sign-out" />
     </div>
   );
 }

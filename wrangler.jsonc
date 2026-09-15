@@ -28,6 +28,10 @@
     { "binding": "LICENSE_SERVICE", "service": "hivarium-license-service" }
   ],
   "vars": {
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "EMAIL_PROVIDER_URL": "https://api.resend.com/emails",
+    "EMAIL_FROM_ADDRESS": "Hivarium Access <access@hivarium.dev>",
+    "EMAIL_REPLY_TO": "access@hivarium.dev",
+    "PORTAL_BASE_URL": "https://portal.hivarium.dev"
   }
 }

@@ -16,6 +16,8 @@ import Unauthorized from './pages/Unauthorized';
 import NotProvisioned from './pages/NotProvisioned';
 import AccessDisabled from './pages/AccessDisabled';
 import ServiceUnavailable from './pages/ServiceUnavailable';
+import Login from './pages/Login';
+import VerifyMagicLink from './pages/VerifyMagicLink';
 
 /**
  * The gate owns routing for every session state. Public pages always render;
@@ -39,6 +41,8 @@ function Gate() {
       <Routes>
         <Route path="/unauthorized" element={<Unauthorized />} />
         <Route path="/service-unavailable" element={<ServiceUnavailable />} />
+        <Route path="/login" element={<Navigate to="/overview" replace />} />
+        <Route path="/login/verify" element={<Navigate to="/overview" replace />} />
         <Route element={<AppShell session={sessionState.session} />}>
           <Route path="/" element={<Navigate to="/overview" replace />} />
           <Route path="/overview" element={<Overview />} />
@@ -60,11 +64,13 @@ function Gate() {
   if (sessionState.status === 'unauthorized') {
     return (
       <Routes>
-        <Route path="/unauthorized" element={<Unauthorized />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/login/verify" element={<VerifyMagicLink />} />
+        <Route path="/unauthorized" element={<Navigate to="/login" replace />} />
         <Route path="/not-provisioned" element={<NotProvisioned />} />
         <Route path="/access-disabled" element={<AccessDisabled />} />
         <Route path="/service-unavailable" element={<ServiceUnavailable />} />
-        <Route path="*" element={<Navigate to="/unauthorized" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
   }
@@ -89,7 +95,9 @@ function Gate() {
 
   return (
     <Routes>
-      <Route path="/unauthorized" element={<Unauthorized />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/login/verify" element={<VerifyMagicLink />} />
+      <Route path="/unauthorized" element={<Navigate to="/login" replace />} />
       <Route path="/service-unavailable" element={<ServiceUnavailable />} />
       <Route path="*" element={<Navigate to="/service-unavailable" replace />} />
     </Routes>

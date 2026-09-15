@@ -43,6 +43,12 @@ import {
 } from './api/operator-handlers';
 import { handleOperatorUpsertMembership } from './api/membership-handlers';
 import { InMemoryRateLimiter, MACHINE_RATE_LIMIT, MACHINE_RATE_WINDOW_MS } from './api/rate-limit';
+import {
+  handleMagicLinkLogout,
+  handleMagicLinkRequest,
+  handleMagicLinkVerify,
+  type MagicLinkDeps,
+} from './auth/magic-link-handlers';
 import { newCorrelationId } from './util';
 
 export interface PortalEnv {
@@ -66,9 +72,17 @@ export interface PortalEnv {
   OPERATOR_SERVICE_TOKEN?: string;
   LICENSE_SERVICE_TOKEN?: string;
 
-  /** Inbound: service token for Operator Console webhooks. */
-  OPERATOR_CALLER_TOKEN?: string;
-}
+   /** Inbound: service token for Operator Console webhooks. */
+   OPERATOR_CALLER_TOKEN?: string;
+
+   /** Magic-link email provider configuration (see auth/magic-link-email.ts). */
+   EMAIL_PROVIDER_API_KEY?: string;
+   EMAIL_FROM_ADDRESS?: string;
+   EMAIL_REPLY_TO?: string;
+   EMAIL_PROVIDER_URL?: string;
+   /** Absolute HTTPS portal base URL used to build the emailed sign-in link. */
+   PORTAL_BASE_URL?: string;
+ }
 
 const SECURITY_HEADERS: Record<string, string> = {
   'Cache-Control': 'no-store',
@@ -81,11 +95,40 @@ const SECURITY_HEADERS: Record<string, string> = {
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+/**
+ * Provider configuration for magic-link email delivery. Fails closed when
+ * unset: the magic-link request route still responds identically (generic
+ * 202) rather than revealing which configuration is missing.
+ */
+function magicLinkDepsFor(env: PortalEnv, db: D1Database): MagicLinkDeps {
+  return {
+    db,
+    provider: {
+      baseUrl: env.PORTAL_BASE_URL ?? '',
+      apiKey: env.EMAIL_PROVIDER_API_KEY ?? '',
+      from: env.EMAIL_FROM_ADDRESS ?? '',
+      replyTo: env.EMAIL_REPLY_TO,
+      apiUrl: env.EMAIL_PROVIDER_URL,
+    },
+  };
+}
+
 function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   const headers = new Headers(SECURITY_HEADERS);
   headers.set('Content-Type', 'application/json; charset=utf-8');
   for (const [name, value] of Object.entries(extraHeaders)) headers.set(name, value);
   return Response.json(payload, { status, headers });
+}
+
+/**
+ * Body-less response (redirects, 204s) carrying the complete security header
+ * set. Used by the magic-link verify/logout routes so every response —
+ * including failure redirects and method mismatches — is covered.
+ */
+function emptyResponse(status: number, extraHeaders: Record<string, string> = {}): Response {
+  const headers = new Headers(SECURITY_HEADERS);
+  for (const [name, value] of Object.entries(extraHeaders)) headers.set(name, value);
+  return new Response(null, { status, headers });
 }
 
 function errorResponse(error: ApiError, requestId: string): Response {
@@ -216,6 +259,63 @@ async function handleApi(request: Request, env: PortalEnv, url: URL, extensions:
   // Liveness probe: no data exposure, no auth required.
   if (method === 'GET' && url.pathname === '/api/health') {
     return json({ service: 'hivarium-customer-portal', status: 'ok' }, 200, { 'x-request-id': requestId });
+  }
+
+  // ---- public magic-link sign-in routes (no authenticated identity) ------
+  // Routed before the /api/v1 gate because they are pre-authentication by
+  // design. They fail closed and never distinguish internal outcomes in
+  // their responses.
+  if (method === 'POST' && url.pathname === '/api/auth/magic-link') {
+    try {
+      const handlerResult = await handleMagicLinkRequest(request, magicLinkDepsFor(env, env.PORTAL_DB));
+      const headers: Record<string, string> = { 'x-request-id': requestId };
+      if (handlerResult.headers) Object.assign(headers, handlerResult.headers);
+      return json(handlerResult.jsonBody ?? {}, handlerResult.status, headers);
+    } catch {
+      // Defensive: the handler swallows its own failures; this ensures no
+      // response shape ever reveals internals.
+      return json({ message: 'Sign-in link dispatched if the account is active.' }, 202, {
+        'x-request-id': requestId,
+        'cache-control': 'no-store',
+      });
+    }
+  }
+  if (method === 'POST' && url.pathname === '/api/auth/verify') {
+    try {
+      const handlerResult = await handleMagicLinkVerify(request, magicLinkDepsFor(env, env.PORTAL_DB));
+      const headers: Record<string, string> = { 'x-request-id': requestId };
+      if (handlerResult.headers) Object.assign(headers, handlerResult.headers);
+      return json(handlerResult.jsonBody ?? {}, handlerResult.status, headers);
+    } catch {
+      // Defensive: never leak internals on an unexpected error.
+      return json(
+        { error: 'invalid_link', message: 'This sign-in link is invalid, expired, or already used.' },
+        400,
+        { 'x-request-id': requestId, 'cache-control': 'no-store' },
+      );
+    }
+  }
+  if (url.pathname === '/api/auth/logout') {
+    if (method !== 'POST') {
+      return emptyResponse(303, {
+        'x-request-id': requestId,
+        location: new URL('/login', url.toString()).toString(),
+      });
+    }
+    // Logout is a browser mutation: same-host Origin check required.
+    try {
+      verifyOrigin(request, url, 'session');
+      const handlerResult = await handleMagicLinkLogout(request, magicLinkDepsFor(env, env.PORTAL_DB));
+      const headers: Record<string, string> = { 'x-request-id': requestId };
+      if (handlerResult.headers) Object.assign(headers, handlerResult.headers);
+      return emptyResponse(handlerResult.status, headers);
+    } catch (error) {
+      if (error instanceof ApiError) return errorResponse(error, requestId);
+      // Defensive: never leak internals on an unexpected error.
+      const headers: Record<string, string> = { 'x-request-id': requestId };
+      headers['location'] = new URL('/login', url.toString()).toString();
+      return emptyResponse(303, headers);
+    }
   }
 
   if (!url.pathname.startsWith('/api/v1/')) {

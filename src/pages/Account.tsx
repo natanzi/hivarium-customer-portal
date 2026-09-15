@@ -1,6 +1,7 @@
 import { useSession } from '../session';
-import { Card, DefList, LinkButton, LoadingState, OutboundLink, Page, StatusPill, UnavailableState } from '../components/ui';
+import { Card, DefList, LinkButton, LoadingState, Page, StatusPill, UnavailableState } from '../components/ui';
 import { RoleBadge } from '../role-badge';
+import { SignOut } from '../components/SignOut';
 import { REQUEST_TYPE_LABELS, type RequestType } from '../../shared/types';
 
 export default function Account() {
@@ -72,7 +73,7 @@ export default function Account() {
 
       <Card title="Session">
         <div className="action-row">
-          <OutboundLink href={session.signOutUrl}>Sign out</OutboundLink>
+          <SignOut signOutUrl={session.signOutUrl} className="btn btn-secondary" />
           <LinkButton to="/requests/new" variant="secondary" className="hide-on-mobile">
             New request
           </LinkButton>
