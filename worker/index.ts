@@ -349,7 +349,7 @@ async function handleApi(request: Request, env: PortalEnv, url: URL, extensions:
       return json(errorEnvelope('access_disabled', 'Portal access is disabled for this account.', requestId), 403, { 'x-request-id': requestId });
     }
     if (failure.kind === 'access_expired') {
-      return json(errorEnvelope('access_expired', 'This evaluation workspace has expired.', requestId), 403, { 'x-request-id': requestId });
+      return json(errorEnvelope('access_expired', 'Your demo period has expired.', requestId), 403, { 'x-request-id': requestId });
     }
     // no_token, invalid_token: identical envelope — never reveal membership by unauthenticated probing.
     return json(errorEnvelope('unauthorized', 'Sign-in required.', requestId), 401, { 'x-request-id': requestId });

@@ -86,7 +86,7 @@ test.describe('requests workflow', () => {
     await signIn(context, EMAILS.admin);
     await page.goto('/requests/new');
     await page.getByLabel('Request type').selectOption('capacity_increase');
-    await page.getByLabel(/Requested plan or requirements/).fill('Increase evaluation capacity for Q4.');
+    await page.getByLabel(/Requested plan or requirements/).fill('Increase demo capacity for Q4.');
     await page.getByLabel('Note').fill('E2E batch run.');
     await page.getByRole('button', { name: 'Submit request' }).click();
     await expect(page).toHaveURL(/\/requests\/req-/, { timeout: 10_000 });

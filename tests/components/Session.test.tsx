@@ -105,7 +105,7 @@ describe('session guard', () => {
     await waitFor(() => expect(screen.queryByRole('status', { name: /checking your session/i })).not.toBeInTheDocument());
   });
 
-  it('never renders the shell for a disabled evaluation membership', async () => {
+  it('never renders the shell for a disabled demo membership', async () => {
     installFetchMock({ '/api/v1/account/status': failed(403, 'access_disabled', 'Portal access is disabled for this account.') });
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Portal access is disabled' })).toBeInTheDocument();

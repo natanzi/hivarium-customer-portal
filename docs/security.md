@@ -29,7 +29,7 @@ every API request:
   unauthorized`. Unauthenticated callers (missing or invalid token) share an
   identical `401` envelope. After a verified Access JWT, an email with no
   membership returns `403 not_provisioned`, a disabled membership returns
-  `403 access_disabled`, and an expired evaluation membership returns
+  `403 access_disabled`, and an expired demo membership returns
   `403 access_expired`. None of those 403 bodies include other customers'
   identifiers.
 - **Local development only**: when `ENVIRONMENT !== 'production'`, the

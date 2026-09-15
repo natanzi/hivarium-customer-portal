@@ -27,8 +27,8 @@ INSERT OR IGNORE INTO customer_requests
   (id, customer_id, requested_by_membership_id, request_type, status, title, reason, structured_payload_json, idempotency_key, created_at, updated_at, cancelled_at, completed_at)
 VALUES
   ('req-acme-submitted-001', 'acme-dev-001', 'mbr-acme-admin-001',
-   'capacity_increase', 'submitted', 'Capacity increase', 'Preparing for a larger evaluation batch.',
-   '{"capacityType":"agents","desiredCapacity":8,"notes":"Q3 evaluation batch"}',
+   'capacity_increase', 'submitted', 'Capacity increase', 'Preparing for a larger demo batch.',
+   '{"capacityType":"agents","desiredCapacity":8,"notes":"Q3 demo batch"}',
    'seed-capacity-001', '2026-08-20T10:00:00.000Z', '2026-08-20T10:00:00.000Z', NULL, NULL),
   ('req-acme-approved-001',  'acme-dev-001', 'mbr-acme-admin-001',
    'renewal', 'approved', 'Renewal request', 'Extend the current annual contract.',

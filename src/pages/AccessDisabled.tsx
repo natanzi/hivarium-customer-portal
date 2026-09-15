@@ -7,7 +7,7 @@ export default function AccessDisabled() {
         <p className="eyebrow">Hivarium customer portal</p>
         <h1>Portal access is disabled</h1>
         <p>
-          This evaluation workspace is disabled or has expired. Authentication succeeded,
+          This demo workspace is disabled or its demo period has expired. Authentication succeeded,
           but customer data is not available. Contact the person who manages your
           Hivarium relationship if you believe this is a mistake.
         </p>

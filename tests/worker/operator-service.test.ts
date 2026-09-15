@@ -447,7 +447,7 @@ describe('operator membership provisioning', () => {
     expect(JSON.stringify(await jsonBody(otherCustomer))).not.toMatch(/acme-dev-001/);
   });
 
-  it('treats an expired evaluation membership as access_expired without tenant leakage', async () => {
+  it('treats an expired demo membership as access_expired without tenant leakage', async () => {
     const email = 'expired.eval@acme.example';
     const created = await serviceRequest(app.app, app.env, OPERATOR_TOKEN, membershipPath('acme-dev-001', email), {
       method: 'PUT',
