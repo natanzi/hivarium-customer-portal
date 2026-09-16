@@ -38,7 +38,7 @@ describe('session guard', () => {
   it('shows first-party sign in when the session cannot be verified', async () => {
     installFetchMock({ '/api/v1/account/status': failed(401, 'unauthorized', 'Sign-in required.') });
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Sign in to your portal' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
   });
 
   it('submits a normalized email and shows an enumeration-safe result', async () => {
@@ -53,7 +53,7 @@ describe('session guard', () => {
     const user = userEvent.setup();
     render(<App />);
     await user.type(await screen.findByLabelText('Work email'), '  Customer@Example.com  ');
-    await user.click(screen.getByRole('button', { name: 'Email me a sign-in link' }));
+    await user.click(screen.getByRole('button', { name: /Sign in/i }));
     expect(requestBody).toEqual({ email: 'customer@example.com' });
     expect(await screen.findByText('If an active portal account exists for that email, a sign-in link is on its way.')).toBeInTheDocument();
     expect(screen.getByText(/expires in 10 minutes/i)).toBeInTheDocument();
