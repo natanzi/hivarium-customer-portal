@@ -18,9 +18,10 @@ import {
 } from '../components/ui';
 
 const MODE_LABELS: Record<string, string> = {
-  online: 'Online',
-  offline: 'Offline',
-  bare_metal: 'Bare metal',
+  'self-hosted': 'Self-hosted',
+  'managed-cloud': 'Managed cloud',
+  'air-gapped': 'Air-gapped',
+  embedded: 'Embedded',
 };
 
 export async function downloadSignedLicense(licenseId: string): Promise<void> {

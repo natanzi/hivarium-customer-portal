@@ -362,7 +362,7 @@ export class MemoryLicenseService implements LicensePort {
               {
                 id: 'dep-prod-001',
                 environment: 'production',
-                mode: 'online',
+                mode: 'managed-cloud',
                 lastValidatedAt: '2026-08-30T06:00:00.000Z',
                 heartbeatAt: '2026-08-30T06:00:00.000Z',
                 activationCount: 1,
@@ -381,7 +381,7 @@ export class MemoryLicenseService implements LicensePort {
               {
                 id: 'dep-bm-001',
                 environment: 'bare_metal',
-                mode: 'bare_metal',
+                mode: 'embedded',
                 lastValidatedAt: '2026-08-29T22:00:00.000Z',
                 heartbeatAt: null,
                 activationCount: 1,

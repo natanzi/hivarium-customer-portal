@@ -257,7 +257,7 @@ export interface ActivityEventDto {
 export interface DeploymentRecord {
   id: string;
   environment: string;
-  mode: 'online' | 'offline' | 'bare_metal';
+  mode: 'self-hosted' | 'managed-cloud' | 'air-gapped' | 'embedded';
   lastValidatedAt: string | null;
   heartbeatAt: string | null;
   activationCount: number;
@@ -269,7 +269,7 @@ export interface LicenseRecord {
   licenseType: string;
   product?: string;
   revision?: string;
-  status: 'active' | 'expired' | 'revoked' | 'pending' | 'suspended';
+  status: 'active' | 'expired' | 'revoked' | 'draft' | 'suspended' | 'superseded';
   issuedAt: string;
   expiresAt: string;
   permittedAgentProducts: string[];
@@ -363,18 +363,18 @@ export interface LicensesData {
 
 export type UsageData =
   | {
-      kind: 'prepaid';
-      balanceTokens: number;
-      warningThresholdTokens: number | null;
-      ledger: LedgerRow[];
-      availability: ServiceAvailability;
-    }
+    kind: 'prepaid';
+    balanceTokens: number;
+    warningThresholdTokens: number | null;
+    ledger: LedgerRow[];
+    availability: ServiceAvailability;
+  }
   | {
-      kind: 'commercial';
-      model: CommercialModel;
-      summary: UsageSummary;
-      availability: ServiceAvailability;
-    };
+    kind: 'commercial';
+    model: CommercialModel;
+    summary: UsageSummary;
+    availability: ServiceAvailability;
+  };
 
 // ---------------------------------------------------------------------------
 // Machine API scope names

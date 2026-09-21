@@ -700,11 +700,13 @@ textarea {
 }
 
 .status-scheduled .status-dot,
+.status-draft .status-dot,
 .status-pending .status-dot {
   background: #b07a1e;
 }
 
-.status-expired .status-dot {
+.status-expired .status-dot,
+.status-superseded .status-dot {
   background: #8a5a12;
 }
 
@@ -738,7 +740,8 @@ textarea {
   background: #fdf3f0;
 }
 
-.status-expired {
+.status-expired,
+.status-superseded {
   border-color: #e2c89a;
   background: #fbf6ea;
 }
@@ -752,6 +755,7 @@ textarea {
 }
 
 .status-scheduled,
+.status-draft,
 .status-pending {
   border-color: #e5cf9f;
   background: #fdf8ec;

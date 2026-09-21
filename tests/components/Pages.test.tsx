@@ -362,7 +362,7 @@ describe('Licenses', () => {
               expiresAt: '2026-12-31T23:59:59.000Z',
               permittedAgentProducts: ['agent-scan-001'],
               deployments: [
-                { id: 'dep-1', environment: 'production', mode: 'online', lastValidatedAt: '2026-08-30T06:00:00.000Z', heartbeatAt: null, activationCount: 1, activationLimit: 3 },
+                { id: 'dep-1', environment: 'production', mode: 'managed-cloud', lastValidatedAt: '2026-08-30T06:00:00.000Z', heartbeatAt: null, activationCount: 1, activationLimit: 3 },
               ],
             },
           ],
@@ -377,7 +377,7 @@ describe('Licenses', () => {
     );
     expect((await screen.findAllByText('lic-1')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('dep-1')).toBeInTheDocument();
-    expect(screen.getAllByText('Online').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Managed cloud').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
   });
 

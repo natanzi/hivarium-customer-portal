@@ -24,6 +24,7 @@ import type {
   UsageSummary,
   AgentAccessGrant,
   LicenseRecord,
+  DeploymentRecord,
 } from '../../shared/types';
 
 export interface PortalView {
@@ -438,9 +439,7 @@ function validateActivity(value: unknown): { ok: true; value: unknown } | { ok: 
 }
 
 function mapLicenseStatus(value: string | null): LicenseRecord['status'] {
-  if (value === 'draft') return 'pending';
-  if (value === 'superseded') return 'expired';
-  if (value === 'active' || value === 'expired' || value === 'revoked' || value === 'pending' || value === 'suspended') {
+  if (value === 'active' || value === 'expired' || value === 'revoked' || value === 'draft' || value === 'suspended' || value === 'superseded') {
     return value;
   }
   return 'active';
@@ -453,13 +452,20 @@ function mapLicenseRecord(entry: unknown): LicenseRecord | null {
     const d = asRecord(dep);
     if (!d) return null;
     const modeRaw = asString(d.mode) ?? asString(d.deploymentType);
-    const mode = modeRaw === 'offline' || modeRaw === 'air-gapped' || modeRaw === 'bare_metal'
-      ? (modeRaw === 'air-gapped' ? 'offline' : modeRaw)
-      : 'online';
+    let mode: DeploymentRecord['mode'] = 'managed-cloud';
+    if (modeRaw === 'self-hosted' || modeRaw === 'managed-cloud' || modeRaw === 'air-gapped' || modeRaw === 'embedded') {
+      mode = modeRaw as DeploymentRecord['mode'];
+    } else if (modeRaw === 'online') {
+      mode = 'self-hosted';
+    } else if (modeRaw === 'offline') {
+      mode = 'air-gapped';
+    } else if (modeRaw === 'bare_metal') {
+      mode = 'embedded';
+    }
     return {
       id: asString(d.id) ?? '',
       environment: asString(d.environment) ?? 'production',
-      mode: mode as 'online' | 'offline' | 'bare_metal',
+      mode,
       lastValidatedAt: asString(d.lastValidatedAt) ?? asString(d.last_validated_at) ?? null,
       heartbeatAt: asString(d.heartbeatAt) ?? asString(d.heartbeat_at) ?? null,
       activationCount: asNumber(d.activationCount) ?? 0,
