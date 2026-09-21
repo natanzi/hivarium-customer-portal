@@ -111,6 +111,8 @@ const STATUS_LABELS: Record<string, string> = {
   archived: 'Archived',
   pending: 'Pending',
   ended: 'Ended',
+  draft: 'Draft',
+  superseded: 'Superseded',
 };
 
 export function StatusPill({ status }: { status: string }) {
